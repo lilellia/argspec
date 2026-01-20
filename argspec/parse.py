@@ -2,14 +2,12 @@ from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 import sys
-from typing import Any, cast, dataclass_transform, Self, TypeVar
+from typing import Any, cast, dataclass_transform, Self
 
 from typewire import as_type, is_iterable
 
 from .metadata import _true, Flag, MISSING, Option
 from .schema import Schema
-
-C = TypeVar("C")
 
 
 class ArgumentError(Exception):
