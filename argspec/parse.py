@@ -157,11 +157,22 @@ class Schema:
 
                     flag_negators[negator] = name
 
-                # provide a default negator for flags that default to True
-                if value.default is True and (negator := f"--no-{kebab_name}") not in aliases:
+                # provide a default negator for flags that default to True when no other negator is provided
+                if value.default is True and not value.negators and (negator := f"--no-{kebab_name}") not in aliases:
                     flag_negators[negator] = name
 
         return cls(args=args, aliases=aliases, flag_negators=flag_negators)
+
+    def get_all_names_for(self, name: str, meta: Option | Flag) -> list[str]:
+        names = [kebabify(name if name.startswith("-") else f"--{name}", lower=True)]
+
+        if meta.aliases:
+            names = [*meta.aliases, *names]
+
+        if meta.short:
+            names = [f"-{name[0]}", *names]
+
+        return names
 
     def help(self) -> str:
         """Return a help string for the given argument specification schema."""
@@ -186,15 +197,13 @@ class Schema:
         meta: Flag | Option[Any] | Positional[Any]
 
         for name, (type_, meta) in {**help_, **self.flag_args}.items():
-            display_name = kebabify(name if name.startswith("-") else f"--{name}", lower=True)
-            names = [*meta.aliases, display_name] if meta.aliases else [display_name]
-            name_str = ", ".join(names)
+            names = ", ".join(self.get_all_names_for(name, meta))
 
             type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
-            buffer.write(f"    {name_str}\n")
+            buffer.write(f"    true: {names}\n")
 
             if negators := {k for k, v in self.flag_negators.items() if v == name}:
-                buffer.write(f"    {', '.join(negators)}\n")
+                buffer.write(f"    false: {', '.join(negators)}\n")
 
             buffer.write(f"    {meta.help or ''}")
             buffer.write(f" (default: {meta.default})")
@@ -203,12 +212,10 @@ class Schema:
 
         # values
         for name, (type_, meta) in self.option_args.items():
-            display_name = kebabify(name if name.startswith("-") else f"--{name}", lower=True)
-            names = [*meta.aliases, display_name] if meta.aliases else [display_name]
-            name_str = ", ".join(names)
+            names = ", ".join(self.get_all_names_for(name, meta))
 
             type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
-            buffer.write(f"    {name_str} {name.upper()} <{type_name}>\n")
+            buffer.write(f"    {names} {name.upper()} <{type_name}>\n")
             buffer.write(f"    {meta.help or ''}")
 
             if meta.default is not MISSING:

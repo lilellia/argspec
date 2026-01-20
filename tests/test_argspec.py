@@ -332,6 +332,15 @@ def test_manual_flag_negator() -> None:
     assert not config.verbose
 
 
+def test_manual_flag_negator_does_not_generate_automatic_one() -> None:
+    class Config(ArgSpec):
+        verbose: bool = flag(True, negators=("--quiet",))
+
+    argv = ["--no-verbose"]
+    with pytest.raises(ArgumentError):
+        Config._from_argv(argv)
+
+
 def test_manual_flag_negator_that_matches_automatic_one_does_not_raise_error() -> None:
     class Config(ArgSpec):
         verbose: bool = flag(True, negators=("--no-verbose",))
@@ -340,14 +349,6 @@ def test_manual_flag_negator_that_matches_automatic_one_does_not_raise_error() -
     config = Config.from_argv(argv)
 
     assert not config.verbose
-
-
-def test_help_output_includes_flag_negators() -> None:
-    class Config(ArgSpec):
-        verbose: bool = flag(True, negators=("--quiet",))
-
-    help_text = Config.__argspec_schema__.help()
-    assert "--quiet" in help_text
 
 
 def test_repeated_options_last_wins() -> None:

@@ -26,7 +26,7 @@ Of course, you also get a help message (accessible manually by `Args.__argspec_s
 $ python main.py --help
 
 # Usage:
-#     hello.py [OPTIONS] PATH
+#     main.py [OPTIONS] PATH
 
 # Options:
 #     --help, -h
