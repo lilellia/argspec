@@ -1,11 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "argspec"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.13"
+description = "A library for cleanly and succinctly performing type-safe command-line argument parsing via a declarative interface."
+readme="README.md"
+requires-python = ">=3.10"
 dependencies = [
     "typewire>=0.1.0",
     "typing-extensions>=4.15.0",
+]
+authors=[
+    { name = "Lily Ellington", email = "lilell_@outlook.com" }
+]
+keywords = [
+    "command-line",
+    "cli",
+    "arguments",
+    "argument-parser",
+    "argument-parsing",
+    "argparse",
+    "type-safe"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities"
 ]
 
 [tool.ruff]
@@ -13,7 +46,7 @@ line-length = 120
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F"]
+select = ["E", "F", "I"]
 ignore = ["I001"]
 
 [tool.ruff.isort]
@@ -27,4 +60,13 @@ order-by-type = false
 dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+]
+
+[project.urls]
+repository = "https://github.com/lilellia/argspec"
+"Bug Tracker" = "https://github.com/lilellia/argspec/issues"
+
+[tool.hatch.build]
+include = [
+    "argspec"
 ]
