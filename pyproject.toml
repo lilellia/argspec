@@ -1,0 +1,30 @@
+[project]
+name = "argspec"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "typewire>=0.1.0",
+    "typing-extensions>=4.15.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["I001"]
+
+[tool.ruff.isort]
+known-local-folder = ["argspec"]
+force-single-line = false
+lines-after-imports = 1
+force-sort-within-sections = true
+order-by-type = false
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+]
