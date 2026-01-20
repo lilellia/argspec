@@ -30,6 +30,7 @@ class Positional(Generic[T]):
 @dataclass(frozen=True, slots=True)
 class Option(Generic[T]):
     default: T | MissingType = MISSING
+    short: bool = False
     aliases: Sequence[str] | None = field(default_factory=list)
     validator: Callable[[T], bool] = _true
     help: str | None = None
@@ -41,6 +42,7 @@ class Option(Generic[T]):
 @dataclass(frozen=True, slots=True)
 class Flag:
     default: bool = False
+    short: bool = False
     aliases: Sequence[str] | None = field(default_factory=list)
     help: str | None = None
 
@@ -64,17 +66,19 @@ def positional(
 def option(
     default: T | MissingType = MISSING,
     *,
+    short: bool = False,
     aliases: Sequence[str] | None = None,
     validator: Callable[[T], bool] = _true,
     help: str | None = None,
 ) -> Any:
-    return Option(default=default, aliases=aliases, validator=validator, help=help)
+    return Option(default=default, short=short, aliases=aliases, validator=validator, help=help)
 
 
 def flag(
     default: bool = False,
     *,
+    short: bool = False,
     aliases: Sequence[str] | None = None,
     help: str | None = None,
 ) -> Any:
-    return Flag(default=default, aliases=aliases, help=help)
+    return Flag(default=default, short=short, aliases=aliases, help=help)

@@ -1,121 +1,344 @@
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
+from io import StringIO
+import itertools
+from pathlib import Path
 import sys
-from typing import Any, cast, dataclass_transform, Self
+from typing import Any, cast, get_args, get_origin, NamedTuple, Self, TypeVar
 
-from typewire import as_type, is_iterable
+from typewire import as_type, is_iterable, TypeHint
+from typing_extensions import get_annotations
 
-from .metadata import _true, Flag, MISSING, Option
-from .schema import Schema
+from .metadata import _true, Flag, MISSING, Option, Positional
 
 
 class ArgumentError(Exception):
     pass
 
 
-@dataclass_transform()
-class ArgSpecMeta(type):
-    __argspec_schema__: Schema
-
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any], **kwargs: Any) -> type:
-        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-
-        if name == "ArgSpec":
-            return cls
-
-        cls = cast(Any, dataclass(cls))
-        cls.__argspec_schema__ = Schema.for_class(cls)
-
-        return cast(type, cls)
+class ArgumentSpecError(Exception):
+    pass
 
 
-class ArgSpec(metaclass=ArgSpecMeta):
+class ArgvConsumeResult(NamedTuple):
+    parsed_args: dict[str, Any]
+    positional_args: deque[str]
+
+
+C = TypeVar("C")
+
+
+def get_container_length(type_hint: TypeHint) -> int | None:
+    """Get the length of a container type. Return 0 for noncontainers, None for containers of unknown length.
+
+    >>> get_container_length(int)
+    0
+
+    >>> get_container_length(list[int])  # arbitrary length
+    None
+
+    >>> get_container_length(tuple[int, str])
+    2
+
+    >>> get_container_length(tuple[int, ...])
+    None
+    """
+    if not is_iterable(type_hint):
+        return 0
+
+    if type_hint in (str, bytes):
+        # specifically handle Iterable[str] and Iterable[bytes] as simply str and bytes
+        return 0
+
+    args = get_args(type_hint)
+    origin = get_origin(type_hint)
+
+    # if tuple[T, T] fixed length
+    if cast(Any, origin) is tuple:
+        if not args:
+            return None
+
+        return None if Ellipsis in args else len(args)
+
+    # otherwise, it's a variadic container
+    return None
+
+
+def kebabify(text: str, *, lower: bool = False) -> str:
+    kebab = text.replace("_", "-")
+    return kebab.lower() if lower else kebab
+
+
+def format_help_message_for_positional(name: str, type_: TypeHint, meta: Positional[Any]) -> str:
+    match get_container_length(type_):
+        case 0:
+            value = name.upper()
+        case None:
+            value = f"{name.upper()} [{name.upper()}...]"
+        case n:
+            value = " ".join([name.upper() for _ in range(n)])
+
+    return value if meta.is_required() else f"[{value}]"
+
+
+@dataclass(frozen=True, slots=True)
+class Schema:
+    args: dict[str, tuple[TypeHint, Positional[Any] | Option[Any] | Flag]]
+    aliases: dict[str, str]
+
+    def __post_init__(self) -> None:
+        arities = [self.nargs_for(name) for name in self.positional_args.keys()]
+        if arities.count(None) > 1:
+            raise ArgumentSpecError("Multiple positional arguments with arbitrary length")
+
+    @property
+    def positional_args(self) -> dict[str, tuple[TypeHint, Positional[Any]]]:
+        return {name: (type_, meta) for name, (type_, meta) in self.args.items() if isinstance(meta, Positional)}
+
+    @property
+    def option_args(self) -> dict[str, tuple[TypeHint, Option[Any]]]:
+        return {name: (type_, meta) for name, (type_, meta) in self.args.items() if isinstance(meta, Option)}
+
+    @property
+    def flag_args(self) -> dict[str, tuple[TypeHint, Flag]]:
+        return {name: (type_, meta) for name, (type_, meta) in self.args.items() if isinstance(meta, Flag)}
+
+    @property
+    def help_keys(self) -> list[str]:
+        return [k for k in ("-h", "--help") if k not in {**self.args, **self.aliases}.keys()]
+
+    def nargs_for(self, name: str) -> int | None:
+        type_, _ = self.args[name]
+        return get_container_length(type_)
+
     @classmethod
-    def help(cls) -> str:
-        return cls.__argspec_schema__.help()
+    def for_class(cls, wrapped_cls: type[C]) -> Self:
+        args = {}
+        aliases = {}
+        for name, annot in get_annotations(wrapped_cls, eval_str=True).items():
+            value = getattr(wrapped_cls, name)
+            args[name] = (annot, value)
+            kebab_name = kebabify(name, lower=True)
 
-    @classmethod
-    def _from_argv(cls, argv: Sequence[str] | None = None) -> Self:
-        """Parse the given argv (or sys.argv[1:]) into an instance of the class."""
-        if argv is None:
-            argv = sys.argv[1:]
+            if isinstance(value, (Option, Flag)):
+                if f"--{kebab_name}" in aliases:
+                    raise ArgumentSpecError(f"Duplicate option: --{name}")
 
-        argv = deque(argv)
+                aliases[f"--{kebab_name}"] = name
 
-        schema = cls.__argspec_schema__
+                if name != kebab_name:
+                    if f"--{name}" in aliases:
+                        raise ArgumentSpecError(f"Duplicate option: --{name}")
 
-        # handle options and flags
+                    aliases[f"--{name}"] = name
+
+                for alias in value.aliases or []:
+                    if alias in aliases:
+                        raise ArgumentSpecError(f"Duplicate option alias: {alias}")
+                    aliases[alias] = name
+
+                if value.short:
+                    if (short := f"-{name[0]}") in aliases:
+                        raise ArgumentSpecError(f"Duplicate option alias: {short}")
+                    aliases[short] = name
+
+        return cls(args=args, aliases=aliases)
+
+    def help(self) -> str:
+        """Return a help string for the given argument specification schema."""
+        buffer = StringIO()
+
+        buffer.write("Usage:\n")
+        positionals = " ".join(
+            format_help_message_for_positional(name, type_, meta)
+            for name, (type_, meta) in self.positional_args.items()
+        )
+        prog = Path(sys.argv[0]).name
+
+        buffer.write(f"    {prog} [OPTIONS] {positionals}\n\n")
+        buffer.write("Options:\n")
+
+        # flags
+        if self.help_keys:
+            help_ = {self.help_keys[0]: (bool, Flag(aliases=self.help_keys[1:], help="Print this message and exit"))}
+        else:
+            help_ = {}
+
+        meta: Flag | Option[Any] | Positional[Any]
+
+        for name, (type_, meta) in {**help_, **self.flag_args}.items():
+            display_name = kebabify(name if name.startswith("-") else f"--{name}", lower=True)
+            names = [*meta.aliases, display_name] if meta.aliases else [display_name]
+            name_str = ", ".join(names)
+
+            type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
+            buffer.write(f"    {name_str}\n")
+            buffer.write(f"    {meta.help or ''}")
+            buffer.write(f" (default: {meta.default})")
+
+            buffer.write("\n\n")
+
+        # values
+        for name, (type_, meta) in self.option_args.items():
+            display_name = kebabify(name if name.startswith("-") else f"--{name}", lower=True)
+            names = [*meta.aliases, display_name] if meta.aliases else [display_name]
+            name_str = ", ".join(names)
+
+            type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
+            buffer.write(f"    {name_str} {name.upper()} <{type_name}>\n")
+            buffer.write(f"    {meta.help or ''}")
+
+            if meta.default is not MISSING:
+                buffer.write(f" (default: {meta.default})")
+
+            buffer.write("\n\n")
+
+        # positional arguments
+        buffer.write("\nArguments:\n")
+        for name, (type_, meta) in self.positional_args.items():
+            type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
+            buffer.write(f"    {kebabify(name.upper())} <{type_name}>\n")
+            buffer.write(f"    {meta.help or ''}")
+
+            if meta.default is not MISSING:
+                buffer.write(f" (default: {meta.default})")
+
+            buffer.write("\n\n")
+
+        return buffer.getvalue()
+
+    def pop_until_next_token_or_limit(self, pool: deque[str], name: str, arity: int | None) -> list[str]:
+        tokens: list[str] = []
+
+        for taken in itertools.count():
+            if arity is not None and taken >= arity:
+                # we've hit the arity limit
+                break
+
+            if not pool:
+                # we've run out of tokens to take
+                if arity is None:
+                    # this is fine, because we were just picking until we ran out
+                    break
+
+                raise ArgumentError(f"Missing value for option --{name}")
+
+            val = pool.popleft()
+            if val in self.aliases:
+                # this is another token, so put it back
+                pool.appendleft(val)
+                break
+
+            if val == "--":
+                # we've hit the end of the available tokens
+                break
+
+            tokens.append(val)
+
+        return tokens
+
+    def consume_argv(self, argv: deque[str]) -> ArgvConsumeResult:
         parsed_args: dict[str, Any] = {}
         positional_args: deque[str] = deque()
 
         while argv:
             token = argv.popleft()
-            if token in schema.aliases:
-                name = schema.aliases[token]
-                type_, meta = schema.args[name]
 
-                if isinstance(meta, Option):
-                    try:
-                        value = argv.popleft()
-                    except IndexError:
-                        raise ArgumentError(f"Missing value for option --{name}")
+            if token == "--":
+                positional_args.extend(argv)
+                break
 
-                    try:
-                        parsed_args[name] = as_type(value, type_)
-                    except ValueError as err:
-                        raise ArgumentError(f"Invalid value for option --{name}: {value} ({err})")
-
-                elif isinstance(meta, Flag):
-                    parsed_args[name] = not meta.default
-                else:
-                    raise ArgumentError(f"Unknown argument: {token}")
-
-            elif token in schema.help_keys:
-                sys.stderr.write(cls.help() + "\n")
-                sys.exit(0)
-            else:
+            if token not in self.aliases.keys():
                 positional_args.append(token)
+                continue
 
-        # handle positional arguments
-        positional_arg_names = list(schema.positional_args.keys())
-        for i, (name, (type_, meta)) in enumerate(schema.positional_args.items()):
-            if not positional_args:
-                if meta.default is not MISSING:
-                    parsed_args[name] = meta.default
-                elif is_iterable(type_):
-                    parsed_args[name] = []
-                else:
-                    raise ArgumentError(f"Missing positional argument: {name}")
-            elif is_iterable(type_):
-                parsed_args[name] = []
-                arity = schema.nargs_for(name)
-                if arity is None:
-                    # consume as much as possible
-                    further_required = sum(cast(int, schema.nargs_for(name)) for name in positional_arg_names[i + 1 :])
-                    arity = len(positional_args) - further_required
+            name = self.aliases[token]
+            type_, meta = self.args[name]
 
-                for _ in range(arity):
-                    value = positional_args.popleft()
-                    parsed_args[name].append(value)
-
+            if isinstance(meta, Option):
                 try:
-                    parsed_args[name] = as_type(parsed_args[name], type_)
-                except ValueError as err:
-                    raise ArgumentError(f"Invalid value for positional argument {name}: {parsed_args[name]} ({err})")
-            else:
-                value = positional_args.popleft()
+                    value = (
+                        self.pop_until_next_token_or_limit(argv, name, arity=self.nargs_for(name))
+                        if is_iterable(type_)
+                        else argv.popleft()
+                    )
+                except IndexError:
+                    raise ArgumentError(f"Missing value for option --{name}")
+                except ArgumentError:
+                    raise
+
                 try:
                     parsed_args[name] = as_type(value, type_)
                 except ValueError as err:
-                    raise ArgumentError(f"Invalid value for positional argument {name}: {value} ({err})")
+                    raise ArgumentError(f"Invalid value for option --{name}: {value} ({err})")
 
-        # check for remaining positional arguments
+            elif isinstance(meta, Flag):
+                parsed_args[name] = not meta.default
+
+            else:
+                raise ArgumentError(f"Unknown argument: {token}")
+
+        return ArgvConsumeResult(parsed_args, positional_args)
+
+    def required_positionals_after(self, name: str) -> int:
+        names = list(self.positional_args.keys())
+        index = names.index(name)
+
+        nargs = [cast(int, self.nargs_for(arg)) for arg in names[index + 1 :]]
+        return sum(max(1, n) for n in nargs)
+
+    def assign_positional_arg(self, name: str, positional_args: deque[str]) -> Any:
+        type_, meta = self.args[name]
+
+        if not positional_args:
+            if meta.default is not MISSING:
+                return meta.default
+
+            if is_iterable(type_):
+                return []
+
+            raise ArgumentError(f"Missing positional argument: {name}")
+
+        if not is_iterable(type_):
+            value = positional_args.popleft()
+            try:
+                return as_type(value, type_)
+            except ValueError as err:
+                raise ArgumentError(f"Invalid value for positional argument {name}: {value} ({err})")
+
+        collected = []
+
+        if (arity := self.nargs_for(name)) is None:
+            # consume as much as possible
+            arity = len(positional_args) - self.required_positionals_after(name)
+
+        for _ in range(arity):
+            try:
+                value = positional_args.popleft()
+            except IndexError:
+                raise ArgumentError(f"Missing value for positional argument {name}")
+            collected.append(value)
+
+        if not collected and meta.default is not MISSING:
+            return meta.default
+
+        try:
+            return as_type(collected, type_)
+        except ValueError as err:
+            raise ArgumentError(f"Invalid value for positional argument {name}: {collected} ({err})")
+
+    def assign_positional_args(self, parsed_args: dict[str, Any], positional_args: deque[str]) -> None:
+        """Update the parsed_args dict by assigning the positional arguments according to the schema."""
+        for name in self.positional_args.keys():
+            parsed_args[name] = self.assign_positional_arg(name, positional_args)
+
+    def raise_if_extra_positional_args(self, positional_args: deque[str]) -> None:
         if positional_args:
-            raise ArgumentError(f"Extra positional arguments: {', '.join(positional_args)}")
+            raise ArgumentError(f"Too many positional arguments: {', '.join(positional_args)}")
 
-        # go through the arguments and check for unpassed options and apply defaults
-        for name, (type_, meta) in schema.args.items():
+    def apply_defaults(self, parsed_args: dict[str, Any]) -> None:
+        for name, (type_, meta) in self.args.items():
             value = parsed_args.get(name, meta)
 
             if isinstance(value, (Option, Flag)):
@@ -124,22 +347,33 @@ class ArgSpec(metaclass=ArgSpecMeta):
 
                 parsed_args[name] = as_type(value.default, type_)
 
-        # run validators
-        for name, (type_, meta) in schema.args.items():
+    def run_validators(self, parsed_args: dict[str, Any]) -> None:
+        for name, (type_, meta) in self.args.items():
             value = parsed_args[name]
             validator = getattr(meta, "validator", _true)
 
             if not validator(value):
                 raise ArgumentError(f"Invalid value for {name}: {value}")
 
-        return cls(**parsed_args)
+    def parse_args(self, argv: Sequence[str] | None = None) -> dict[str, Any]:
+        """Parse the given argv (or sys.argv[1:]) into a dict according to the schema."""
+        argv = deque(argv if argv is not None else sys.argv[1:])
 
-    @classmethod
-    def from_argv(cls, argv: Sequence[str] | None = None) -> Self:
-        """Parse the given argv (or sys.argv[1:]) into an instance of the class."""
+        # check for help
+        if set(argv) & set(self.help_keys):
+            sys.stderr.write(self.help() + "\n")
+            sys.exit(0)
+
         try:
-            return cls._from_argv(argv)
-        except ArgumentError as err:
-            sys.stderr.write(f"ArgumentError: {err}\n")
-            sys.stderr.write(getattr(cls, "help")() + "\n")
-            sys.exit(1)
+            # handle options and flags
+            # note that parsed_args and positional_args are mutated throughout this chain
+            parsed_args, positional_args = self.consume_argv(argv)
+
+            self.assign_positional_args(parsed_args, positional_args)
+            self.raise_if_extra_positional_args(positional_args)
+            self.apply_defaults(parsed_args)
+            self.run_validators(parsed_args)
+        except ArgumentError:
+            raise
+
+        return parsed_args
