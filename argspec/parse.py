@@ -86,6 +86,7 @@ def format_help_message_for_positional(name: str, type_: TypeHint, meta: Positio
 class Schema:
     args: dict[str, tuple[TypeHint, Positional[Any] | Option[Any] | Flag]]
     aliases: dict[str, str]
+    flag_negators: dict[str, str]
 
     def __post_init__(self) -> None:
         arities = [self.nargs_for(name) for name in self.positional_args.keys()]
@@ -108,14 +109,19 @@ class Schema:
     def help_keys(self) -> list[str]:
         return [k for k in ("-h", "--help") if k not in {**self.args, **self.aliases}.keys()]
 
+    @property
+    def named_tokens(self) -> set[str]:
+        return set(self.aliases.keys()) | set(self.flag_negators.keys())
+
     def nargs_for(self, name: str) -> int | None:
         type_, _ = self.args[name]
         return get_container_length(type_)
 
     @classmethod
     def for_class(cls, wrapped_cls: type[C]) -> Self:
-        args = {}
-        aliases = {}
+        args: dict[str, tuple[TypeHint, Positional[Any] | Option[Any] | Flag]] = {}
+        aliases: dict[str, str] = {}
+        flag_negators: dict[str, str] = {}
         for name, annot in get_annotations(wrapped_cls, eval_str=True).items():
             value = getattr(wrapped_cls, name)
             args[name] = (annot, value)
@@ -143,7 +149,19 @@ class Schema:
                         raise ArgumentSpecError(f"Duplicate option alias: {short}")
                     aliases[short] = name
 
-        return cls(args=args, aliases=aliases)
+            # flag negators
+            if isinstance(value, Flag):
+                for negator in value.negators or []:
+                    if negator in (*aliases.keys(), *flag_negators.keys()):
+                        raise ArgumentSpecError(f"Duplicate flag negator: {negator}")
+
+                    flag_negators[negator] = name
+
+                # provide a default negator for flags that default to True
+                if value.default is True and (negator := f"--no-{kebab_name}") not in aliases:
+                    flag_negators[negator] = name
+
+        return cls(args=args, aliases=aliases, flag_negators=flag_negators)
 
     def help(self) -> str:
         """Return a help string for the given argument specification schema."""
@@ -174,6 +192,10 @@ class Schema:
 
             type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
             buffer.write(f"    {name_str}\n")
+
+            if negators := {k for k, v in self.flag_negators.items() if v == name}:
+                buffer.write(f"    {', '.join(negators)}\n")
+
             buffer.write(f"    {meta.help or ''}")
             buffer.write(f" (default: {meta.default})")
 
@@ -225,7 +247,7 @@ class Schema:
                 raise ArgumentError(f"Missing value for option --{name}")
 
             val = pool.popleft()
-            if val in self.aliases:
+            if val in self.named_tokens:
                 # this is another token, so put it back
                 pool.appendleft(val)
                 break
@@ -249,8 +271,13 @@ class Schema:
                 positional_args.extend(argv)
                 break
 
-            if token not in self.aliases.keys():
+            if token not in self.named_tokens:
                 positional_args.append(token)
+                continue
+
+            if token in self.flag_negators:
+                name = self.flag_negators[token]
+                parsed_args[name] = False
                 continue
 
             name = self.aliases[token]
@@ -274,7 +301,7 @@ class Schema:
                     raise ArgumentError(f"Invalid value for option --{name}: {value} ({err})")
 
             elif isinstance(meta, Flag):
-                parsed_args[name] = not meta.default
+                parsed_args[name] = True
 
             else:
                 raise ArgumentError(f"Unknown argument: {token}")

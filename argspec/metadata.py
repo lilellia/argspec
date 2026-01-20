@@ -44,6 +44,7 @@ class Flag:
     default: bool = False
     short: bool = False
     aliases: Sequence[str] | None = field(default_factory=list)
+    negators: Sequence[str] | None = field(default_factory=list)
     help: str | None = None
 
 
@@ -79,6 +80,7 @@ def flag(
     *,
     short: bool = False,
     aliases: Sequence[str] | None = None,
+    negators: Sequence[str] | None = None,
     help: str | None = None,
 ) -> Any:
-    return Flag(default=default, short=short, aliases=aliases, help=help)
+    return Flag(default=default, short=short, aliases=aliases, negators=negators, help=help)

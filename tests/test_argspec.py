@@ -310,3 +310,62 @@ def test_snake_case_naming() -> None:
     config = Config.from_argv(argv)
 
     assert config.some_variable == 3
+
+
+def test_automatic_flag_negator() -> None:
+    class Config(ArgSpec):
+        verbose: bool = flag(True)
+
+    argv = ["--no-verbose"]
+    config = Config.from_argv(argv)
+
+    assert not config.verbose
+
+
+def test_manual_flag_negator() -> None:
+    class Config(ArgSpec):
+        verbose: bool = flag(True, negators=("--quiet",))
+
+    argv = ["--quiet"]
+    config = Config.from_argv(argv)
+
+    assert not config.verbose
+
+
+def test_manual_flag_negator_that_matches_automatic_one_does_not_raise_error() -> None:
+    class Config(ArgSpec):
+        verbose: bool = flag(True, negators=("--no-verbose",))
+
+    argv = ["--no-verbose"]
+    config = Config.from_argv(argv)
+
+    assert not config.verbose
+
+
+def test_help_output_includes_flag_negators() -> None:
+    class Config(ArgSpec):
+        verbose: bool = flag(True, negators=("--quiet",))
+
+    help_text = Config.__argspec_schema__.help()
+    assert "--quiet" in help_text
+
+
+def test_repeated_options_last_wins() -> None:
+    class Config(ArgSpec):
+        port: int = option()
+
+    argv = ["--port", "8080", "--port", "8081"]
+    config = Config.from_argv(argv)
+
+    assert config.port == 8081
+
+
+def test_combined_short_flags_fails() -> None:
+    class Config(ArgSpec):
+        a: bool = flag()
+        b: bool = flag()
+
+    argv = ["-ab"]
+
+    with pytest.raises(ArgumentError):
+        Config._from_argv(argv)
