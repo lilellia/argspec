@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v0.3.0
+
+- Add support for `--key=value` (and `-k=value`) syntax for option arguments. Note that this does not allow flags to take arguments: `--verbose=true` is an ArgumentError.
+
 ## v0.2.0
 
 - Fixed help messages to include automatic short aliases (which had worked but weren't documented)

@@ -180,6 +180,10 @@ Notes:
 
 ### General Notes
 
+#### `--key value` vs. `--key=value`
+
+`argspec` allows for both formats for options. Flags, however, cannot take values even in the latter form. Thus, `--path /path/to/file` and `--path=/path/to/file` are both acceptable, but `--verbose=false` is not (use simply `--verbose` as an enable flag and `--no-verbose` as a disable flag).
+
 #### Flexible Naming
 
 `argspec` respects naming conventions. If you define a field as `some_variable`, it'll provide both `--some-variable` and `--some_variable` as valid options on the command line.

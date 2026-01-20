@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "argspec"
-version = "0.2.0"
+version = "0.3.0"
 description = "A library for cleanly and succinctly performing type-safe command-line argument parsing via a declarative interface."
 readme="README.md"
 requires-python = ">=3.10"
