@@ -113,6 +113,21 @@ class Schema:
     def named_tokens(self) -> set[str]:
         return set(self.aliases.keys()) | set(self.flag_negators.keys())
 
+    @staticmethod
+    def make_short(name: str) -> str:
+        return f"-{name.lstrip('-')[0]}"
+
+    def is_flag(self, token: str) -> bool:
+        token = self.aliases.get(token, token)
+
+        if token.lstrip("-") in (*self.flag_args.keys(), *self.flag_negators.keys()):
+            return True
+
+        if any(meta.short and token == self.make_short(name) for name, (_, meta) in self.flag_args.items()):
+            return True
+
+        return False
+
     def nargs_for(self, name: str) -> int | None:
         type_, _ = self.args[name]
         return get_container_length(type_)
@@ -145,7 +160,7 @@ class Schema:
                     aliases[alias] = name
 
                 if value.short:
-                    if (short := f"-{name[0]}") in aliases:
+                    if (short := cls.make_short(name)) in aliases:
                         raise ArgumentSpecError(f"Duplicate option alias: {short}")
                     aliases[short] = name
 
@@ -277,6 +292,16 @@ class Schema:
             if token == "--":
                 positional_args.extend(argv)
                 break
+
+            if token.startswith("-") and "=" in token:
+                # allow `--key=value` to be interpreted as `--key value`
+                # by stripping out the value and just adding it back into the pool
+                token, val = token.split("=", maxsplit=1)
+
+                if self.is_flag(token):
+                    raise ArgumentError(f"Flag {token} does not take a value (`{token}={val}`)")
+
+                argv.appendleft(val)
 
             if token not in self.named_tokens:
                 positional_args.append(token)
