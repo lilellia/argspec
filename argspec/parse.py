@@ -5,10 +5,15 @@ from io import StringIO
 import itertools
 from pathlib import Path
 import sys
-from typing import Any, cast, get_args, get_origin, NamedTuple, Self, TypeVar
+from typing import Any, cast, get_args, get_origin, NamedTuple, TypeVar
 
 from typewire import as_type, is_iterable, TypeHint
 from typing_extensions import get_annotations
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .metadata import _true, Flag, MISSING, Option, Positional
 
@@ -178,7 +183,7 @@ class Schema:
 
         return cls(args=args, aliases=aliases, flag_negators=flag_negators)
 
-    def get_all_names_for(self, name: str, meta: Option | Flag) -> list[str]:
+    def get_all_names_for(self, name: str, meta: Option[Any] | Flag) -> list[str]:
         names = [kebabify(name if name.startswith("-") else f"--{name}", lower=True)]
 
         if meta.aliases:

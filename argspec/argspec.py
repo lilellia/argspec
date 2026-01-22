@@ -1,7 +1,13 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 import sys
-from typing import Any, cast, dataclass_transform, Self
+from typing import Any, cast
+
+if sys.version_info >= (3, 11):
+    from typing import dataclass_transform, Self
+else:
+    from typing_extensions import dataclass_transform, Self
+
 
 from .parse import ArgumentError, Schema
 

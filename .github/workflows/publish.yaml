@@ -1,0 +1,33 @@
+name: CI & CD
+on:
+  push:
+    tags:
+        - "v*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Run Tests
+        run: uv run python -m pytest .
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write  # Required for trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Build and Publish
+        run: |
+          uv build
+          uv publish
