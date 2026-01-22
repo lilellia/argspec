@@ -34,6 +34,30 @@ def test_basic_usage_with_defaults() -> None:
     assert not config.verbose
 
 
+def test_basic_optional_with_none() -> None:
+    class Config(ArgSpec):
+        path: Path = positional()
+        port: int | None = option(None)
+
+    argv = ["/path/to/file"]
+    config = Config.from_argv(argv)
+
+    assert config.path == Path("/path/to/file")
+    assert config.port is None
+
+
+def test_basic_optional_with_none_cast_str() -> None:
+    class Config(ArgSpec):
+        path: Path = positional()
+        name: str | None = option(None)
+
+    argv = ["/path/to/file"]
+    config = Config.from_argv(argv)
+
+    assert config.path == Path("/path/to/file")
+    assert config.name is None
+
+
 def test_short_aliases() -> None:
     class Config(ArgSpec):
         path: Path = positional()
