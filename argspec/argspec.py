@@ -9,7 +9,8 @@ else:
     from typing_extensions import dataclass_transform, Self
 
 
-from .parse import ArgumentError, Schema
+from .errors import ArgumentError
+from .parse import Schema
 
 
 @dataclass_transform()

@@ -2,6 +2,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
+from .errors import ArgumentSpecError
+
 T = TypeVar("T")
 
 
@@ -20,6 +22,7 @@ MISSING = MissingType()
 @dataclass(frozen=True, slots=True)
 class Positional(Generic[T]):
     default: T | MissingType = MISSING
+    default_factory: Callable[[], T] | None = None
     validator: Callable[[T], bool] = _true
     help: str | None = None
 
@@ -30,6 +33,7 @@ class Positional(Generic[T]):
 @dataclass(frozen=True, slots=True)
 class Option(Generic[T]):
     default: T | MissingType = MISSING
+    default_factory: Callable[[], T] | None = None
     short: bool = False
     aliases: Sequence[str] | None = field(default_factory=list)
     validator: Callable[[T], bool] = _true
@@ -58,21 +62,31 @@ class Flag:
 def positional(
     default: T | MissingType = MISSING,
     *,
+    default_factory: Callable[[], T] | None = None,
     validator: Callable[[T], bool] = _true,
     help: str | None = None,
 ) -> Any:
-    return Positional(default=default, validator=validator, help=help)
+    if default is not MISSING and default_factory is not None:
+        raise ArgumentSpecError("Cannot specify both default and default_factory")
+
+    return Positional(default=default, default_factory=default_factory, validator=validator, help=help)
 
 
 def option(
     default: T | MissingType = MISSING,
     *,
+    default_factory: Callable[[], T] | None = None,
     short: bool = False,
     aliases: Sequence[str] | None = None,
     validator: Callable[[T], bool] = _true,
     help: str | None = None,
 ) -> Any:
-    return Option(default=default, short=short, aliases=aliases, validator=validator, help=help)
+    if default is not MISSING and default_factory is not None:
+        raise ArgumentSpecError("Cannot specify both default and default_factory")
+
+    return Option(
+        default=default, default_factory=default_factory, short=short, aliases=aliases, validator=validator, help=help
+    )
 
 
 def flag(

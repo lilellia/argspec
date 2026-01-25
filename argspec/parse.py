@@ -15,15 +15,9 @@ if sys.version_info >= (3, 11):
 else:
     from typing_extensions import Self
 
+from .errors import ArgumentError, ArgumentSpecError
 from .metadata import _true, Flag, MISSING, Option, Positional
-
-
-class ArgumentError(Exception):
-    pass
-
-
-class ArgumentSpecError(Exception):
-    pass
+from .readenv import readenv
 
 
 class ArgvConsumeResult(NamedTuple):
@@ -249,8 +243,24 @@ class Schema:
             buffer.write(f"    {names} {name.upper()} <{type_name}>\n")
             buffer.write(f"    {meta.help or ''}")
 
-            if meta.default is not MISSING:
-                buffer.write(f" (default: {meta.default})")
+            if (default := meta.default) is not MISSING:
+                buffer.write(f" (default: {default})")
+            elif (factory := meta.default_factory) is not None:
+                if isinstance(factory, readenv):
+                    # get the current value of the variable
+                    current = factory()
+                    if current is MISSING:
+                        current = "<unset>"
+                    else:
+                        current = repr(current)
+
+                    # print a useful message for the user
+                    if factory.default is MISSING:
+                        buffer.write(f" (default: ${factory.key} (currently: {current}))")
+                    else:
+                        buffer.write(f" (default: ${factory.key} or {factory.default!r} (currently: {current}))")
+                else:
+                    buffer.write(f" (default: {factory()})")
 
             buffer.write("\n\n")
 
@@ -282,7 +292,7 @@ class Schema:
                     # this is fine, because we were just picking until we ran out
                     break
 
-                raise ArgumentError(f"Missing value for option --{name}")
+                raise ArgumentError(f"Missing value for option --{kebabify(name)}")
 
             val = pool.popleft()
             if val in self.named_tokens:
@@ -339,14 +349,14 @@ class Schema:
                         else argv.popleft()
                     )
                 except IndexError:
-                    raise ArgumentError(f"Missing value for option --{name}")
+                    raise ArgumentError(f"Missing value for option --{kebabify(name)}")
                 except ArgumentError:
                     raise
 
                 try:
                     parsed_args[name] = as_type(value, type_)
                 except ValueError as err:
-                    raise ArgumentError(f"Invalid value for option --{name}: {value} ({err})")
+                    raise ArgumentError(f"Invalid value for option --{kebabify(name)}: {value} ({err})")
 
             elif isinstance(meta, Flag):
                 parsed_args[name] = True
@@ -365,13 +375,20 @@ class Schema:
 
     def assign_positional_arg(self, name: str, positional_args: deque[str]) -> Any:
         type_, meta = self.args[name]
+        assert isinstance(meta, Positional)
 
         if not positional_args:
             if meta.default is not MISSING:
-                return meta.default
+                return as_type(meta.default, type_)
+
+            if meta.default_factory is not None:
+                if (default := meta.default_factory()) is MISSING:
+                    raise ArgumentError(f"Missing positional argument: {name}")
+
+                return as_type(default, type_)
 
             if is_iterable(type_):
-                return []
+                return as_type([], type_)
 
             raise ArgumentError(f"Missing positional argument: {name}")
 
@@ -396,7 +413,7 @@ class Schema:
             collected.append(value)
 
         if not collected and meta.default is not MISSING:
-            return meta.default
+            return as_type(meta.default, type_)
 
         try:
             return as_type(collected, type_)
@@ -416,11 +433,18 @@ class Schema:
         for name, (type_, meta) in self.args.items():
             value = parsed_args.get(name, meta)
 
-            if isinstance(value, (Option, Flag)):
-                if value.default is MISSING:
-                    raise ArgumentError(f"Missing value for: --{name}")
-
+            if isinstance(value, Flag):
                 parsed_args[name] = as_type(value.default, type_)
+
+            if isinstance(value, Option):
+                if value.default is not MISSING:
+                    parsed_args[name] = as_type(value.default, type_)
+                    continue
+
+                if value.default_factory is None or (default := value.default_factory()) is MISSING:
+                    raise ArgumentError(f"Missing value for: --{kebabify(name)}")
+
+                parsed_args[name] = as_type(default, type_)
 
     def run_validators(self, parsed_args: dict[str, Any]) -> None:
         for name, (type_, meta) in self.args.items():
@@ -428,7 +452,7 @@ class Schema:
             validator = getattr(meta, "validator", _true)
 
             if not validator(value):
-                raise ArgumentError(f"Invalid value for {name}: {value}")
+                raise ArgumentError(f"Invalid value for {kebabify(name)}: {value}")
 
     def parse_args(self, argv: Sequence[str] | None = None) -> dict[str, Any]:
         """Parse the given argv (or sys.argv[1:]) into a dict according to the schema."""
