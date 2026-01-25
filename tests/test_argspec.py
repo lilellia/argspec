@@ -1,3 +1,4 @@
+import dataclasses
 from pathlib import Path
 from typing import Literal
 
@@ -383,6 +384,26 @@ def test_repeated_options_last_wins() -> None:
     config = Config.from_argv(argv)
 
     assert config.port == 8081
+
+
+def test_ignore_non_argspec_objects() -> None:
+    class Config(ArgSpec):
+        path: Path = positional()
+        port: int = option()
+        field1: int = 10
+        field2: list[float] = dataclasses.field(default_factory=list)
+        field3: Path = dataclasses.field(init=False)
+        field4: str | None = dataclasses.field(init=False, default=None)
+
+    argv = ["/path/to/file", "--port", "8080"]
+    config = Config.from_argv(argv)
+
+    assert config.path == Path("/path/to/file")
+    assert config.port == 8080
+    assert config.field1 == 10
+    assert config.field2 == []
+    assert not hasattr(config, "field3")
+    assert config.field4 is None
 
 
 def test_combined_short_flags_fails() -> None:

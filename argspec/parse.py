@@ -143,7 +143,16 @@ class Schema:
         aliases: dict[str, str] = {}
         flag_negators: dict[str, str] = {}
         for name, annot in get_annotations(wrapped_cls, eval_str=True).items():
-            value = getattr(wrapped_cls, name)
+            # get the value of the attribute; will be MISSING if
+            # 1) the value was never set, e.g., `x: int`
+            # 2) the value was set to dataclasses.field, e.g., `y: list[int] = field(default_factory=list)`,
+            #    since dataclasses will generally remove these from the class dict
+            value = getattr(wrapped_cls, name, MISSING)
+
+            if not isinstance(value, (Positional, Option, Flag)):
+                # value is not an argspec object, so we'll just ignore it, letting the dataclass handle it
+                continue
+
             args[name] = (annot, value)
             kebab_name = kebabify(name, lower=True)
 
