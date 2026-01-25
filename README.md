@@ -111,9 +111,12 @@ print(args.send_notifications)  # <-- You do get autocomplete for this
 
 But, obviously, that's a pain, and you now have to define your arguments twice, which is a recipe for forgetting to update it in one of those places.
 
-### Why not `cappa`? `typer`/`cyclopts`? `pydantic_settings`?
+### Why not `cappa`? `typer`/`cyclopts`? `pydantic-settings`?
 
-[`cappa`](https://pypi.org/project/cappa/) is very similar, but it relies on `typing.Annotated` for all of its annotations and also requires you to manually define it as a dataclass.
+<details>
+<summary>
+<a href="https://pypi.org/project/cappa/"><code>cappa</code></a> is very similar, but it relies on <code>typing.Annotated</code> for all of its annotations and also requires you to manually define it as a dataclass.
+</summary>
 
 ```py
 from dataclasses import dataclass, field
@@ -132,8 +135,11 @@ class Args:
 
 args = cappa.parse(Args, backend=cappa.backend)
 ```
+</details>
 
-[`cyclopts`](https://cyclopts.readthedocs.io/en/stable/) is a very strong [`typer`](https://typer.tiangolo.com) alternative that removes much of `typer`'s reliance on `typing.Annotated`, at least until you need to specify aliases. `typer` would have you put the help text in the Annotated field as well, but otherwise, the two would look similar here. Aside from the Annotated usage, the main difference between `typer`/`cyclopts` and `argspec` is that the former hijack your functions, which is incredibly useful for building subcommands but which is just a very different strategy otherwise. Personally, I want a consolidated args object.
+<details>
+<summary> <a href="https://cyclopts.readthedocs.io/en/stable/"><code>cyclopts</code></a> is a very strong <a href="https://typer.tiangolo.com"><code>typer</code></a> alternative that removes much of <code>typer</code>'s reliance on <code>typing.Annotated</code>, at least until you need to specify aliases. <code>typer</code> would have you put the help text in the Annotated field as well, but otherwise, the two would look similar here. Aside from the Annotated usage, the main difference between <code>typer</code>/<code>cyclopts</code> and <code>argspec</code> is that the former hijack your functions, which is incredibly useful for building subcommands but which is just a very different strategy otherwise. Personally, I want a consolidated args object.
+</summary>
 
 ```py
 import os
@@ -168,7 +174,11 @@ if __name__ == "__main__":
     run(main)
 ```
 
-[`pydantic-settings`](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) can also absolutely handle CLI parsing, but it does so within `pydantic`'s model. This is a strong benefit if you're already using the `pydantic` framework, but it's a heavy import if you don't need it. Also, because `pydantic` is meant for such general usage, being able to handle a wide range of sources and formats of data, it forces you into high-level, cross-format abstractions, rather than being tailored for command line ergonomics. In other words, `pydantic` is way more powerful, but that's at the cost of using a sledgehammer to hang a picture frame.
+</details>
+
+<details>
+<summary><a href="https://docs.pydantic.dev/latest/concepts/pydantic_settings/"><code>pydantic-settings</code></a> can also absolutely handle CLI parsing, but it does so within <code>pydantic</code>'s model. This is a strong benefit if you're already using the <code>pydantic</code> framework, but it's a heavy import if you don't need it. Also, because <code>pydantic</code> is meant for such general usage, being able to handle a wide range of sources and formats of data, it forces you into high-level, cross-format abstractions, rather than being tailored for command line ergonomics. In other words, <code>pydantic</code> is way more powerful, but that's at the cost of using a sledgehammer to hang a picture frame.
+</summary>
 
 ```py
 from pathlib import Path
@@ -185,6 +195,78 @@ class Args(BaseSettings, cli_parse_args=True):
 
 args = Args()
 ```
+
+This works, but `validation_alias=AliasChoices(...)` is annoying and requires the original variable name to be listed again as well. But more to the "sledgehammer" point:
+
+```bash
+$ uv init --bare test
+Initialized project `test` at `/home/user/src/test`
+
+$ cd test
+
+$ uv add pydantic-settings
+uv add pydantic-settings
+Using CPython 3.14.2+freethreaded interpreter at: /home/user/.local/bin/python3.14
+Creating virtual environment at: .venv
+Resolved 8 packages in 53ms
+Prepared 1 package in 15.46s
+Installed 7 packages in 5ms
+ + annotated-types==0.7.0
+ + pydantic==2.12.5
+ + pydantic-core==2.41.5
+ + pydantic-settings==2.12.0
+ + python-dotenv==1.2.1
+ + typing-extensions==4.15.0
+ + typing-inspection==0.4.2
+
+# let's check the size of the dependencies
+$ du -s .venv/lib/python3.14t/site-packages/* | \
+  awk '{ total += $1; } END { print "Total: " total " KiB" }'
+Total: 7780 KiB
+
+$ cloc .venv/lib/python3.14t/site-packages/
+     182 text files.
+     145 unique files.                                          
+      38 files ignored.
+
+github.com/AlDanial/cloc v 2.06  T=0.49 s (294.3 files/s, 128010.7 lines/s)
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Python                         143          10855          14924          37289
+Text                             2              0              0              3
+-------------------------------------------------------------------------------
+SUM:                           145          10855          14924          37292
+-------------------------------------------------------------------------------
+```
+
+Doing the same with `argspec`:
+
+|                   | dependencies                                                                                      | size (KiB)    | SLOC           |
+|-------------------|---------------------------------------------------------------------------------------------------|---------------|----------------|
+| argspec           | 1 (argspec, typewire, typing-extensions)                                                                   | 368           | 3,220          |
+| pydantic-settings | 7 (pydantic-settings, pydantic, pydantic-core, annotated-types, python-dotenv, typing-inspection, typing-extensions) | 7,780 (21.1×) | 37,292 (11.6×) |
+
+And even then, most of that 3,220 SLOC is just `typing-extensions`. `argspec + typewire` is about 700 SLOC, and since `pydantic-core` is a compiled executable, it's not contributing to the SLOC metric here.
+
+Does it matter? It isn't necessarily a huge issue, but that power isn't free.
+
+```bash
+$ hyperfine --warmup 5 --runs 10 "uv run python -c 'import argspec'" "uv run python -c 'import pydantic_settings'"
+Benchmark 1: uv run python -c 'import argspec'
+  Time (mean ± σ):      76.7 ms ±   4.1 ms    [User: 58.1 ms, System: 18.0 ms]
+  Range (min … max):    72.5 ms …  85.8 ms    10 runs
+ 
+Benchmark 2: uv run python -c 'import pydantic_settings'
+  Time (mean ± σ):     280.8 ms ±  24.9 ms    [User: 240.6 ms, System: 37.8 ms]
+  Range (min … max):   264.1 ms … 330.0 ms    10 runs
+ 
+Summary
+  uv run python -c 'import argspec' ran
+    3.66 ± 0.38 times faster than uv run python -c 'import pydantic_settings'
+```
+
+</details>
 
 ## Installation
 
@@ -237,7 +319,7 @@ Notes:
 
 ### `readenv`
 
-This function can be used as a default factory to provide a fallback to a given environment variable if the value is not provided on the command line. In particular, the signature is `def readenv(key: str, default: Any = MISSING) -> Any` and thus can be used, as in the example at the top of the page, as:
+This function can be used as a default factory to provide a fallback to a given environment variable if the value is not provided on the command line. It reads the environment variable at instantiation time (i.e., when `.from_argv()` is called), rather than definition time. In particular, the signature is `def readenv(key: str, default: Any = MISSING) -> Callable[[], Any]` and thus can be used, as in the example at the top of the page, as:
 
 ```py
 from argspec import ArgSpec, option, readenv
@@ -261,7 +343,7 @@ Options:
     Print this message and exit
 
     --api-key API_KEY <str>
-    the API key to use from the service (default: $SERVICE_API_KEY)
+    the API key to use from the service (default: $SERVICE_API_KEY (currently: 'token=demo-api-token'))
 ```
 
 ### General Notes
