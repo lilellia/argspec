@@ -208,15 +208,17 @@ class Schema:
         buffer.write(f"    {prog} [OPTIONS] {positionals}\n\n")
         buffer.write("Options:\n")
 
-        # flags
+        # help/usage message
         if self.help_keys:
-            help_ = {self.help_keys[0]: (bool, Flag(aliases=self.help_keys[1:], help="Print this message and exit"))}
-        else:
-            help_ = {}
+            names = ", ".join(self.help_keys)
+            buffer.write(f"    {names}\n")
+            buffer.write("    Print this message and exit\n\n")
+
+        # flags
 
         meta: Flag | Option[Any] | Positional[Any]
 
-        for name, (type_, meta) in {**help_, **self.flag_args}.items():
+        for name, (type_, meta) in self.flag_args.items():
             names = ", ".join(self.get_all_names_for(name, meta))
 
             type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
