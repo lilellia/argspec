@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.4.1
+
+- Improve README clarity, providing additional context with regard to `pydantic-settings`.
+- Improve help/usage message by providing cleaner type hint labels (via update of `typewire` to v1.3.0).
+
 ## v0.4.0
 
 - Improve usage rendering of the help flags.

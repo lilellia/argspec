@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from typing import Any, cast, get_args, get_origin, NamedTuple, TypeVar
 
-from typewire import as_type, is_iterable, TypeHint
+from typewire import as_string, as_type, is_iterable, TypeHint
 from typing_extensions import get_annotations
 
 if sys.version_info >= (3, 11):
@@ -224,7 +224,6 @@ class Schema:
         for name, (type_, meta) in self.flag_args.items():
             names = ", ".join(self.get_all_names_for(name, meta))
 
-            type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
             buffer.write(f"    true: {names}\n")
 
             if negators := {k for k, v in self.flag_negators.items() if v == name}:
@@ -239,8 +238,7 @@ class Schema:
         for name, (type_, meta) in self.option_args.items():
             names = ", ".join(self.get_all_names_for(name, meta))
 
-            type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
-            buffer.write(f"    {names} {name.upper()} <{type_name}>\n")
+            buffer.write(f"    {names} {name.upper()} <{as_string(type_)}>\n")
             buffer.write(f"    {meta.help or ''}")
 
             if (default := meta.default) is not MISSING:
@@ -267,8 +265,7 @@ class Schema:
         # positional arguments
         buffer.write("\nArguments:\n")
         for name, (type_, meta) in self.positional_args.items():
-            type_name = type_.__name__ if hasattr(type_, "__name__") else str(type_)
-            buffer.write(f"    {kebabify(name.upper())} <{type_name}>\n")
+            buffer.write(f"    {kebabify(name.upper())} <{as_string(type_)}>\n")
             buffer.write(f"    {meta.help or ''}")
 
             if meta.default is not MISSING:

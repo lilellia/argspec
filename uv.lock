@@ -4,7 +4,7 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "argspec"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "typewire" },
@@ -21,7 +21,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "typewire", specifier = ">=1.1.0" },
+    { name = "typewire", specifier = ">=1.3.0" },
     { name = "typing-extensions", specifier = ">=4.15.0" },
 ]
 
@@ -488,11 +488,14 @@ wheels = [
 
 [[package]]
 name = "typewire"
-version = "1.1.0"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1c/be/923c521391f3cdb76d6434e3792c35126156c0743e75f5ace78161e19099/typewire-1.1.0.tar.gz", hash = "sha256:3831c9129ad939b06ed7eca346b852abcfc7c8bb6e55742c93273e1f826597e8", size = 6496, upload-time = "2026-01-22T06:50:15.068Z" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/b1/b51bb057bea0e658e4ba753f4ab5cafe5f8bafbde98d0a5201ba8f5c921a/typewire-1.3.0.tar.gz", hash = "sha256:63831f810ba064b018e0b6552a03b78f3860fec0e946743f5c697b24b51d3e64", size = 10113, upload-time = "2026-01-26T02:06:59.669Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/bf/a14280eaf71c3de129edad2a2599026c423ca6b45c3fc296c00ab005a11c/typewire-1.1.0-py3-none-any.whl", hash = "sha256:ec7e71b1e44b729490d919a267c7251357f6ddd18c28360e60e3e26d184291f7", size = 7515, upload-time = "2026-01-22T06:50:14.121Z" },
+    { url = "https://files.pythonhosted.org/packages/54/37/2cad2b239535fc6dccff6d6dc67f7d38ad09e78321a953f59f0f5e05458a/typewire-1.3.0-py3-none-any.whl", hash = "sha256:ac9cd7cee31a2326e257cfdd84fdf3d6277ed3c5136c70bd23a574e84cf5324a", size = 12268, upload-time = "2026-01-26T02:07:01.74Z" },
 ]
 
 [[package]]

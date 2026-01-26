@@ -1,5 +1,6 @@
 from contextlib import redirect_stderr
 from io import StringIO
+from pathlib import Path
 import re
 
 import pytest
@@ -10,14 +11,6 @@ from argspec import ArgSpec, flag, option, positional
 def test_positional_help() -> None:
     class Config(ArgSpec):
         path: str = positional(help="some random help string")
-
-    help_text = Config.__argspec_schema__.help()
-    assert "some random help string" in help_text
-
-
-def test_option_help() -> None:
-    class Config(ArgSpec):
-        path: str = option(help="some random help string")
 
     help_text = Config.__argspec_schema__.help()
     assert "some random help string" in help_text
@@ -36,7 +29,7 @@ def test_option_help_shows_option_name() -> None:
         path: str = option(help="some random help string")
 
     help_text = Config.__argspec_schema__.help()
-    assert "--path" in help_text
+    assert "--path PATH <str>\n    some random help string" in help_text
 
 
 def test_option_help_does_not_generate_short_by_default() -> None:
@@ -263,3 +256,13 @@ def test_shadowing_help_flag_with_short_alias() -> None:
 
     assert config.help == 7
     assert config.verbose
+
+
+def test_correct_type_hints_in_help() -> None:
+    class Config(ArgSpec):
+        ports: list[int] = option(help="list of ports")
+        path: Path = positional(help="path to file")
+
+    help_text = Config.__argspec_schema__.help()
+    assert "--ports PORTS <list[int]>\n    list of ports" in help_text
+    assert "Arguments:\n    PATH <Path>\n    path to file" in help_text
