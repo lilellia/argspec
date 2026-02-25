@@ -23,6 +23,7 @@ MISSING = MissingType()
 class Positional(Generic[T]):
     default: T | MissingType = MISSING
     default_factory: Callable[[], T] | None = None
+    converter: Callable[[str], T] | None = None
     validator: Callable[[T], bool] = _true
     help: str | None = None
 
@@ -34,6 +35,7 @@ class Positional(Generic[T]):
 class Option(Generic[T]):
     default: T | MissingType = MISSING
     default_factory: Callable[[], T] | None = None
+    converter: Callable[[str], T] | None = None
     short: bool = False
     aliases: Sequence[str] | None = field(default_factory=list)
     validator: Callable[[T], bool] = _true
@@ -63,19 +65,23 @@ def positional(
     default: T | MissingType = MISSING,
     *,
     default_factory: Callable[[], T] | None = None,
+    converter: Callable[[str], T] | None = None,
     validator: Callable[[T], bool] = _true,
     help: str | None = None,
 ) -> Any:
     if default is not MISSING and default_factory is not None:
         raise ArgumentSpecError("Cannot specify both default and default_factory")
 
-    return Positional(default=default, default_factory=default_factory, validator=validator, help=help)
+    return Positional(
+        default=default, default_factory=default_factory, converter=converter, validator=validator, help=help
+    )
 
 
 def option(
     default: T | MissingType = MISSING,
     *,
     default_factory: Callable[[], T] | None = None,
+    converter: Callable[[str], T] | None = None,
     short: bool = False,
     aliases: Sequence[str] | None = None,
     validator: Callable[[T], bool] = _true,
@@ -85,7 +91,13 @@ def option(
         raise ArgumentSpecError("Cannot specify both default and default_factory")
 
     return Option(
-        default=default, default_factory=default_factory, short=short, aliases=aliases, validator=validator, help=help
+        default=default,
+        default_factory=default_factory,
+        converter=converter,
+        short=short,
+        aliases=aliases,
+        validator=validator,
+        help=help,
     )
 
 

@@ -8,12 +8,14 @@ I view argument parsing as "the bit that happens before I can actually run my co
 
 ```py
 from argspec import ArgSpec, positional, option, flag, readenv
+import json
 from pathlib import Path
 
 class Args(ArgSpec):
     path: Path = positional(help="the path to read")
     api_key: str = option(default_factory=readenv("SERVICE_API_KEY"), help="the API key to use for the service")
     limit: int = option(10, aliases=["-L"], help="the max number of tries to try doing the thing")
+    metadata: dict[str, str] = option(default_factory=dict, converter=json.loads, help="metadata for the messages, given as a JSON string")
     verbose: bool = flag(short=True, help="enable verbose logging")
     send_notifications: bool = flag(aliases=["-n", "--notif"], help="send all notifications")
 
@@ -45,6 +47,9 @@ Options:
     -L, --limit LIMIT <int>
     the max number of tries to try doing the thing (default: 10)
 
+    --metadata <dict[str, str]>
+    metadata for the messages, given as a JSON string
+
 
 Arguments:
     PATH <Path>
@@ -63,6 +68,7 @@ print(args)  # Args(path=Path('/path/to/file'), limit=10, verbose=False, send_no
 
 ```py
 from argparse import ArgumentParser
+import json
 import os
 from pathlib import Path
 
@@ -70,6 +76,7 @@ parser = ArgumentParser()
 parser.add_argument("path", type=Path, help="the path to read")
 parser.add_argument("--api-key", default=os.environ["SERVICE_API_KEY"], help="the service API to use (default: $SERVICE_API_KEY)")  # fails at definition time if $SERVICE_API_KEY is not defined
 parser.add_argument("-L", "--limit", type=int, default=10, help="the max number of times to try doing the thing (default: 10)")
+parser.add_argument("--metadata", default={}, type=json.loads, help="metadata for the messages, given as a JSON string (default: {})")  # no default factory
 parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose logging (default: False)")
 parser.add_argument("-n", "--notif", "--send-notifications", action="store_true", help="send all notifications (default: False)")
 
@@ -82,6 +89,7 @@ If you want type safety, you can do something like this:
 ```py
 from argparse import ArgumentParser
 from dataclasses import dataclass
+import json
 import os
 from typing import Self
 
@@ -90,6 +98,7 @@ class Args:
     path: Path
     api_key: str
     limit: int
+    metadata: dict[str, str]
     verbose: bool
     send_notifications: bool
 
@@ -100,6 +109,7 @@ class Args:
         parser.add_argument("path", type=Path, help="the path to read")
         parser.add_argument("--api-key", default=os.environ["SERVICE_API_KEY"], help="the service API to use (default: $SERVICE_API_KEY)")  # now fails at instantiation time if $SERVICE_API_KEY is not defined
         parser.add_argument("-L", "--limit", type=int, default=10, help="the max number of times to try doing the thing")
+        parser.add_argument("--metadata", default={}, type=json.loads, help="metadata for the messages, given as a JSON string (default: {})")
         parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose logging")
         parser.add_argument("-n", "--notif", "--send-notifications", action="store_true", help="send all notifications")
 
@@ -120,6 +130,7 @@ But, obviously, that's a pain, and you now have to define your arguments twice, 
 
 ```py
 from dataclasses import dataclass, field
+import json
 import os
 from pathlib import Path
 from typing import Annotated
@@ -130,11 +141,15 @@ class Args:
     path: Annotated[Path, cappa.Arg(help="the path to read")]
     api_key: Annotated[str, cappa.Arg(long=True, help="the API key to use for the service")] = os.environ["SERVICE_API_KEY"]
     limit: Annotated[int, cappa.Arg(short="-L", long=True, help="the max number of times to try doing the thing")] = 10
+    metadata: Annotated[dict[str, str], cappa.Arg(parse=json.loads, long=True, help="metadata for the messages, given as a JSON string")] = field(default_factory=dict)
     verbose: Annotated[bool, cappa.Arg(short=True, long=True, help="enable verbose logging")] = False
     send_notifications: Annotated[bool, cappa.Arg(short="-n", long="--notif/--send-notifications", help="send all notifications")] = False
 
 args = cappa.parse(Args, backend=cappa.backend)
 ```
+
+Note how we also need `dataclasses.field` in order to use `default_factory` since, even though `cappa.Arg` supports `default_factory` as well, we need a value on the right side of the equals sign.
+
 </details>
 
 <details>
@@ -144,12 +159,21 @@ args = cappa.parse(Args, backend=cappa.backend)
 ```py
 import os
 from pathlib import Path
-from cyclopts import Parameter, run
+from cyclopts import Parameter, Token, run
+import json
+from typing import Any
+
+def json_convert(_: Any, *tokens: Token) -> dict[str, str]:
+    return json.loads(" ".join(t.value for t in tokens))
 
 def main(
     path: Path,
     api_key: str = os.environ["SERVICE_API_KEY"],
     limit: Annotated[int, Parameter(alias="-L")] = 10,
+
+    # note that there's actually no sensible value for the RHS default since we know that the value will be provided
+    # as dict[str, str] at runtime, so it'll never actually be None
+    metadata: Annotated[dict[str, str], Parameter(converter=json_convert, default_factory=field)] | None = None,
     verbose: Annotated[bool, Parameter(alias="-v")] = False,
     send_notifications: Annotated[bool, Parameter(name=["--send-notifications", "--notif", "-n"])] = False
 ):
@@ -162,11 +186,14 @@ def main(
         the API key to use for the service
     limit
         the max number of times to try doing the thing
+    metadata
+        metadata for the messages, given as a JSON string
     verbose
         enable verbose logging
     send_notifications
         send all notifications
     """
+    assert metadata is not None
     ...
 
 
@@ -190,13 +217,32 @@ class Args(BaseSettings, cli_parse_args=True):
     path: Path = Field(description="the path to read")
     api_key: str = Field(validation_alias=AliasChoices("api_key", "SERVICE_API_KEY"))
     limit: int = Field(default=10, validation_alias=AliasChoices("limit", "L"), description="the max number of times to try doing the thing")
+    metadata: dict[str, str] = Field(default_factory=dict, description="metadata for the messages, given as a JSON string")
     verbose: bool = Field(default=False, validation_alias=AliasChoices("verbose", "v"), description="enable verbose logging")
     send_notifications: bool = Field(default=False, validation_alias=AliasChoices("send_notifications", "notif", "n"), description="send all notifications")
 
 args = Args()
 ```
 
-This works, but `validation_alias=AliasChoices(...)` is annoying and requires the original variable name to be listed again as well. But more to the "sledgehammer" point:
+This works, but `validation_alias=AliasChoices(...)` is annoying and requires the original variable name to be listed again as well. It automatically handles the "interpret this field as JSON" by simply type-hinting it as dict, but for literally any other sort of converter, it's so much more work (and now we're typing the field name four separate times):
+
+```py
+from pydantic import field_validator, Field, AliasChoices
+from pydantic_settings import BaseSettings
+from typing import Any
+
+class Args(BaseSettings, cli_parse_args=True):
+    values: list[int] = Field(validation_alias=AliasChoices("values", "v"), description="a list of numbers, separated by commas, such as '1,2,3'")
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _parse_values(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return [int(x) for x in v.split(",")]
+        return v
+```
+
+And more to the "sledgehammer" point:
 
 ```bash
 $ uv init --bare test
@@ -373,6 +419,47 @@ class Args(ArgSpec):
     mode: str = option(validator=lambda mode: mode in valid_mode_options)
 
 ```
+
+#### Converters
+
+`positional` and `option` both also define a `converter` parameter. It should be a Callable that takes a singular string (the raw argument value) and returns the processed value to use as the field. An ArgumentError is raised during the parse if (A) an error occurs in this converter or (B) if the resulting value cannot be coerced into the type hint for the field.
+
+```py
+@dataclass
+class Point:
+    x: float
+    y: float
+
+
+def make_points(s: str) -> Iterator[Point]:
+    """Make a sequence of Points from a string of the form A,B;C,D;..."""
+    for point in s.split(";"):
+        x, y = point.split(",")
+        yield Point(float(x), float(y))
+
+
+class Args(ArgSpec):
+    metadata: dict[str, int] = option(converter=json.loads)
+
+    # this converter returns list[str], but it will undergo the same
+    # type coercion as other values, so it can be interpreted as list[int]
+    vals: list[int] = option(converter=lambda s: s.split(","))
+
+    # Point doesn't take a string as an argument, but the converter
+    # can force the shape anyway
+    # Like vals, this converter is (str) -> Iterator[Point],
+    # but it'll be collapsed into tuple[Point] by the parser.
+    points: tuple[Point, ...] = option(converter=make_points)
+
+argv = ["--metadata", "{'foo': 1, 'bar': 10}", "--vals", "1,2,3", "--points", "1.0,2.0;3.0,4.0;5.0,6.0"]
+args = Args.from_argv(argv)
+assert args.metadata == {"foo": 1, "bar": 10}
+assert args.vals == [1, 2, 3]
+assert args.points == [Point(1.0, 2.0), Point(3.0, 4.0), Point(5.0, 6.0)]
+```
+
+> [!NOTE] When `converter` is given, the parser always **consumes exactly one value**, regardless of the type hint. Thus, `vals: list[int] = option(converter=lambda s: s.split())` will take `--vals 1,2,3 4,5,6` to just `[1, 2, 3]` and leave `"4,5,6"` as a positional value.
+
 
 #### Type Inference
 

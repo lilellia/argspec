@@ -128,7 +128,12 @@ class Schema:
         return False
 
     def nargs_for(self, name: str) -> int | None:
-        type_, _ = self.args[name]
+        type_, meta = self.args[name]
+
+        if isinstance(meta, (Positional, Option)) and meta.converter is not None:
+            # existence of a converter means pulling a single value
+            return 1
+
         return get_container_length(type_)
 
     @classmethod
@@ -342,13 +347,20 @@ class Schema:
                 try:
                     value = (
                         self.pop_until_next_token_or_limit(argv, name, arity=self.nargs_for(name))
-                        if is_iterable(type_)
+                        if is_iterable(type_) and not meta.converter
                         else argv.popleft()
                     )
                 except IndexError:
                     raise ArgumentError(f"Missing value for option --{kebabify(name)}")
                 except ArgumentError:
                     raise
+
+                if meta.converter:
+                    assert isinstance(value, str)
+                    try:
+                        value = meta.converter(value)
+                    except Exception as err:
+                        raise ArgumentError(f"Invalid value for option --{kebabify(name)}: {value} ({err})")
 
                 try:
                     parsed_args[name] = as_type(value, type_)
@@ -389,8 +401,15 @@ class Schema:
 
             raise ArgumentError(f"Missing positional argument: {name}")
 
-        if not is_iterable(type_):
+        if not is_iterable(type_) or meta.converter is not None:
             value = positional_args.popleft()
+
+            if meta.converter:
+                try:
+                    value = meta.converter(value)
+                except Exception as err:
+                    raise ArgumentError(f"Invalid value for positional argument {name}: {value} ({err})")
+
             try:
                 return as_type(value, type_)
             except ValueError as err:

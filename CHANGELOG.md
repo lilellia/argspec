@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.5.0
+
+- Add `converter: (str) -> T` field to `positional` and `option`, allowing for more nuanced conversions, such as `json.loads`.
+
 ## 0.4.1
 
 - Improve README clarity, providing additional context with regard to `pydantic-settings`.
