@@ -4,6 +4,7 @@
 
 - Add `converter: (str) -> T` field to `positional` and `option`, allowing for more nuanced conversions, such as `json.loads`.
 - Add `secret: bool` parameter to `readenv`, allowing envvars to be suppressed in the help text.
+- Add `long: bool` parameter to `option` and `flag`, allowing the suppression of internal names.
 
 ## 0.4.1
 

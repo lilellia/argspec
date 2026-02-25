@@ -349,8 +349,10 @@ Factory functions to define positional/option/flag argument interfaces. They tak
 | `default: T`                     | default value for the argument                                                | ✅              | ✅          | ✅ (T=bool) |
 | `default_factory: Callable[[], T]` | zero-argument factory function to call as a default                           | ✅              | ✅          | ❌          |
 | `validator: Callable[[T], bool]` | return True if the value is valid, False otherwise                            | ✅              | ✅          | ❌          |
+| `converter: Callable[[str], S]` | callable to convert the raw string value to result (`S` should be "collapsible" into `T`) | ✅   | ✅          | ❌          |
 | `aliases: Sequence[str]`         | alternative names (long or short) for the option/flag                         | ❌              | ✅          | ✅          |
 | `short: bool`                    | whether a short name should automatically be generated using the first letter | ❌              | ✅          | ✅          |
+| `long: bool`                     | whether the long name (the field name) should be exposed as a CLI parameter   | ❌              | ✅          | ✅          |
 | `negators: Sequence[str]`        | names for flags that can turn the flag "off" e.g., --no-verbose               | ❌              | ❌          | ✅          |
 | `help: str \| None`              | the help text for the given argument                                          | ✅              | ✅          | ✅          |
 
@@ -361,6 +363,7 @@ Notes:
 - When `default` is unprovided for `positional` and `option`, it's interpreted as a missing value and must be filled in on the command line; for a flag, `default=False`.
 - Providing both `default` and `default_factory` will result in an ArgumentSpecError.
 - When using `short=True`, don't also manually provide the short name in `aliases` (such as `name: str = option(short=True, aliases=["-n"])`) as this will result in an ArgumentSpecError for having duplicate names.
+- `long=False` allows you to specify an internal variable/field name without exposing it to the users on the command line. Remember to provide another accessor (via `short` or `aliases`); otherwise, an ArgumentSpecError will be raised.
 - When a flag's default value is True, a negator is automatically generated. For example, `verbose: bool = flag(True)` generates `--no-verbose` as well.
 
 ### `readenv`
@@ -461,7 +464,6 @@ assert args.points == [Point(1.0, 2.0), Point(3.0, 4.0), Point(5.0, 6.0)]
 ```
 
 > [!NOTE] When `converter` is given, the parser always **consumes exactly one value**, regardless of the type hint. Thus, `vals: list[int] = option(converter=lambda s: s.split())` will take `--vals 1,2,3 4,5,6` to just `[1, 2, 3]` and leave `"4,5,6"` as a positional value.
-
 
 #### Type Inference
 

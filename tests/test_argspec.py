@@ -415,3 +415,29 @@ def test_combined_short_flags_fails() -> None:
 
     with pytest.raises(ArgumentError):
         Config._from_argv(argv)
+
+
+def test_field_with_no_accessors_is_argument_spec_error() -> None:
+    with pytest.raises(ArgumentSpecError):
+
+        class Config(ArgSpec):
+            field: int = option(0, long=False)
+
+
+def test_field_without_long() -> None:
+    class Config(ArgSpec):
+        field: int = option(0, long=False, short=True)
+
+    argv = ["--field", "1"]
+    with pytest.raises(ArgumentError):
+        Config._from_argv(argv)
+
+
+def test_field_without_long_can_still_be_accessed() -> None:
+    class Config(ArgSpec):
+        field: int = option(0, long=False, short=True)
+
+    argv = ["-f", "1"]
+    config = Config.from_argv(argv)
+
+    assert config.field == 1

@@ -37,6 +37,7 @@ class Option(Generic[T]):
     default_factory: Callable[[], T] | None = None
     converter: Callable[[str], T] | None = None
     short: bool = False
+    long: bool = True
     aliases: Sequence[str] | None = field(default_factory=list)
     validator: Callable[[T], bool] = _true
     help: str | None = None
@@ -49,6 +50,7 @@ class Option(Generic[T]):
 class Flag:
     default: bool = False
     short: bool = False
+    long: bool = False
     aliases: Sequence[str] | None = field(default_factory=list)
     negators: Sequence[str] | None = field(default_factory=list)
     help: str | None = None
@@ -83,6 +85,7 @@ def option(
     default_factory: Callable[[], T] | None = None,
     converter: Callable[[str], T] | None = None,
     short: bool = False,
+    long: bool = True,
     aliases: Sequence[str] | None = None,
     validator: Callable[[T], bool] = _true,
     help: str | None = None,
@@ -90,11 +93,15 @@ def option(
     if default is not MISSING and default_factory is not None:
         raise ArgumentSpecError("Cannot specify both default and default_factory")
 
+    if not short and not long and not aliases:
+        raise ArgumentSpecError("At least one of short, long, or aliases must be provided")
+
     return Option(
         default=default,
         default_factory=default_factory,
         converter=converter,
         short=short,
+        long=long,
         aliases=aliases,
         validator=validator,
         help=help,
@@ -105,8 +112,12 @@ def flag(
     default: bool = False,
     *,
     short: bool = False,
+    long: bool = True,
     aliases: Sequence[str] | None = None,
     negators: Sequence[str] | None = None,
     help: str | None = None,
 ) -> Any:
-    return Flag(default=default, short=short, aliases=aliases, negators=negators, help=help)
+    if not short and not long and not aliases:
+        raise ArgumentSpecError("At least one of short, long, or aliases must be provided")
+
+    return Flag(default=default, short=short, long=long, aliases=aliases, negators=negators, help=help)

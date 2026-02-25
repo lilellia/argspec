@@ -159,13 +159,15 @@ class Schema:
                 if f"--{kebab_name}" in aliases:
                     raise ArgumentSpecError(f"Duplicate option: --{name}")
 
-                aliases[f"--{kebab_name}"] = name
+                if value.long:
+                    aliases[f"--{kebab_name}"] = name
 
                 if name != kebab_name:
                     if f"--{name}" in aliases:
                         raise ArgumentSpecError(f"Duplicate option: --{name}")
 
-                    aliases[f"--{name}"] = name
+                    if value.long:
+                        aliases[f"--{name}"] = name
 
                 for alias in value.aliases or []:
                     if alias in aliases:
