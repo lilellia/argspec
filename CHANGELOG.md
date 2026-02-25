@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.6.0
+
+- Change `positional` (resp. `option`, `flag`) from returning bespoke `Positional` (resp. `Option`, `Flag`) objects to returning `dataclasses.field(..., metadata={"argspec": metadata_object})`.
+- Automatically convert `default=mutable_value` to `default_factory=lambda: mutable_value` to prevent shared mutable references in the case where multiple instances of the class are created.
+- Add typing overloads to `positional` and `option` to statically disallow `default=val, default_factory=factory`.
+- Improve safety of direct instantiation (e.g., `args = Args(x=1)`) for classes to aim to guarantee that `Args(...)` is also valid.
+  - Values are automatically passed through the same type coercer.
+  - Default values/factories are applied to any unspecified values, where possible.
+  - If any fields are still unspecified, an error is raised.
+
 ## 0.5.0
 
 - Add `converter: (str) -> T` field to `positional` and `option`, allowing for more nuanced conversions, such as `json.loads`.

@@ -59,7 +59,7 @@ Arguments:
 `ArgSpec` (the class) is built on top of `dataclasses`, so you also get all of the dataclass functions (`__init__`, `__repr__`, etc.) for free:
 
 ```py
-print(args)  # Args(path=Path('/path/to/file'), limit=10, verbose=False, send_notifications=False)
+print(args)  # Args(path=Path('/path/to/file'), api_key='demo-api-key', limit=10, metadata={}, verbose=False, send_notifications=False)
 ```
 
 ### Why not `argparse`?
@@ -173,7 +173,7 @@ def main(
 
     # note that there's actually no sensible value for the RHS default since we know that the value will be provided
     # as dict[str, str] at runtime, so it'll never actually be None
-    metadata: Annotated[dict[str, str], Parameter(converter=json_convert, default_factory=field)] | None = None,
+    metadata: Annotated[dict[str, str], Parameter(converter=json_convert, default_factory=dict)] | None = None,
     verbose: Annotated[bool, Parameter(alias="-v")] = False,
     send_notifications: Annotated[bool, Parameter(name=["--send-notifications", "--notif", "-n"])] = False
 ):
@@ -290,26 +290,26 @@ Doing the same with `argspec`:
 
 |                   | dependencies                                                                                      | size (KiB)    | SLOC           |
 |-------------------|---------------------------------------------------------------------------------------------------|---------------|----------------|
-| argspec           | 1 (argspec, typewire, typing-extensions)                                                                   | 368           | 3,220          |
-| pydantic-settings | 7 (pydantic-settings, pydantic, pydantic-core, annotated-types, python-dotenv, typing-inspection, typing-extensions) | 7,780 (21.1×) | 37,292 (11.6×) |
+| argspec           | 2 (argspec, typewire, typing-extensions)                                                                   | 380           | 3,297          |
+| pydantic-settings | 7 (pydantic-settings, pydantic, pydantic-core, annotated-types, python-dotenv, typing-inspection, typing-extensions) | 7,780 (20.5×) | 37,292 (11.3×) |
 
-And even then, most of that 3,220 SLOC is just `typing-extensions`. `argspec + typewire` is about 700 SLOC, and since `pydantic-core` is a compiled executable, it's not contributing to the SLOC metric here.
+And even then, most of that 3,297 SLOC is just `typing-extensions`. `argspec + typewire` is about 900 SLOC, and since `pydantic-core` is a compiled executable, it's not contributing to the SLOC metric here.
 
 Does it matter? It isn't necessarily a huge issue, but that power isn't free.
 
 ```bash
 $ hyperfine --warmup 5 --runs 10 "uv run python -c 'import argspec'" "uv run python -c 'import pydantic_settings'"
 Benchmark 1: uv run python -c 'import argspec'
-  Time (mean ± σ):      76.7 ms ±   4.1 ms    [User: 58.1 ms, System: 18.0 ms]
-  Range (min … max):    72.5 ms …  85.8 ms    10 runs
+  Time (mean ± σ):      81.4 ms ±   2.6 ms    [User: 59.4 ms, System: 21.1 ms]
+  Range (min … max):    77.5 ms …  86.5 ms    10 runs
  
 Benchmark 2: uv run python -c 'import pydantic_settings'
-  Time (mean ± σ):     280.8 ms ±  24.9 ms    [User: 240.6 ms, System: 37.8 ms]
-  Range (min … max):   264.1 ms … 330.0 ms    10 runs
+  Time (mean ± σ):     299.8 ms ±  37.2 ms    [User: 253.6 ms, System: 43.3 ms]
+  Range (min … max):   278.5 ms … 403.0 ms    10 runs
  
 Summary
   uv run python -c 'import argspec' ran
-    3.66 ± 0.38 times faster than uv run python -c 'import pydantic_settings'
+    3.68 ± 0.47 times faster than uv run python -c 'import pydantic_settings'
 ```
 
 </details>
@@ -342,14 +342,14 @@ Inherit from this class to get the argument parsing functionality. It converts y
 
 ### `positional`, `option`, `flag`
 
-Factory functions to define positional/option/flag argument interfaces. They take the following parameters:
+Factory functions to define positional/option/flag argument interfaces. They take the following parameters (note that `T` is the type hint given for the field, and `S` is any type "collapsible" to `T`—see [below](#type-coercion)):
 
 |                                  |                                                                               | **positional** | **option** | **flag**   |
 |----------------------------------|-------------------------------------------------------------------------------|----------------|------------|------------|
-| `default: T`                     | default value for the argument                                                | ✅              | ✅          | ✅ (T=bool) |
-| `default_factory: Callable[[], T]` | zero-argument factory function to call as a default                           | ✅              | ✅          | ❌          |
-| `validator: Callable[[T], bool]` | return True if the value is valid, False otherwise                            | ✅              | ✅          | ❌          |
-| `converter: Callable[[str], S]` | callable to convert the raw string value to result (`S` should be "collapsible" into `T`) | ✅   | ✅          | ❌          |
+| `default: S`                     | default value for the argument                                                | ✅              | ✅          | ✅ (T=bool) |
+| `default_factory: Callable[[], S]` | zero-argument factory function to call as a default                           | ✅            | ✅          | ❌          |
+| `validator: Callable[[S], bool]` | return True if the value is valid, False otherwise                            | ✅              | ✅          | ❌          |
+| `converter: Callable[[str], S]` | callable to convert the raw string value to result                             | ✅              | ✅          | ❌          |
 | `aliases: Sequence[str]`         | alternative names (long or short) for the option/flag                         | ❌              | ✅          | ✅          |
 | `short: bool`                    | whether a short name should automatically be generated using the first letter | ❌              | ✅          | ✅          |
 | `long: bool`                     | whether the long name (the field name) should be exposed as a CLI parameter   | ❌              | ✅          | ✅          |
@@ -403,6 +403,16 @@ If `secret=True`, then the help message will *not* show the current value but wi
 
 `argspec` allows for both formats for options. Flags, however, cannot take values even in the latter form. Thus, `--path /path/to/file` and `--path=/path/to/file` are both acceptable, but `--verbose=false` is not (use simply `--verbose` as an enable flag and `--no-verbose` as a disable flag).
 
+#### Type Coercion
+
+`argspec` is both quite lenient with input types but quite strict with output types. That is, if a field is given as `field: T = option(...)`, then once the class has been instantiated, `field` with be of type `T` (even if `T` is a nonleaf type such as `list[int]`). However, since all values on the command line are strings (that is, `sys.argv` is `list[str]`), the values have to be coerced into that type `T`.
+
+In general, `argspec` (through `typewire`) is pretty good about recognising and converting types. `list[str]` can be collapsed into `set[int]` (if the list elements are numeric), for example. However, `str` cannot be naïvely coerced into `dict[str, str]`, and thus, e.g., `converter=json.loads` must be provided.
+
+This leniency also applies to the values in the metadata factory. `default: S`, `default_factory: Callable[[], S]`, and `converter: Callable[[str], S]` are not required to return a value of the hinted type `T`, so long as the value can be coerced into `T` using the regular conversion hooks. Thus, to allow `--vals 1,2,3` to turn into `[1, 2, 3]`, `converter=lambda s: s.split(",")` is sufficient since `list[str] -> list[int]` is collapsible.
+
+Because the type coercion happens *before* the validators, however, `validator` should be `(T) -> bool`.
+
 #### Flexible Naming
 
 `argspec` respects naming conventions. If you define a field as `some_variable`, it'll provide both `--some-variable` and `--some_variable` as valid options on the command line.
@@ -422,8 +432,28 @@ class Args(ArgSpec):
     # to implement choices in such cases where the values cannot be known in advance:
     # mode: Literal["auto", "manual"] = option()  # <-- prefer this one
     mode: str = option(validator=lambda mode: mode in valid_mode_options)
-
 ```
+
+Since the resulting class is a dataclass, you can use `__post_init__` to employ cross-field validation:
+
+```py
+class Args(ArgSpec):
+    min_value: int = positional()
+    max_value: int = positional()
+
+    def __post_init__(self):
+        if self.min_value > self.max_value:
+            # The dataclass isn't frozen, so you could also decide to just switch the values in this case.
+            raise ArgumentError(f"{self.min_value=} cannot be greater than {self.max_value!r}")
+
+args = Args.from_argv(["10", "100"])
+print(args)  # Args(min_value=10, max_value=100)
+
+with suppress(ArgumentError):
+    Args.from_argv(["100", "10"])
+```
+
+(This is a simple example for illustration, but in this case, it would probably be preferable to use `range: tuple[int, int] = positional(validator=lambda r: r[0] <= r[1])`.)
 
 #### Converters
 
@@ -463,7 +493,7 @@ assert args.vals == [1, 2, 3]
 assert args.points == [Point(1.0, 2.0), Point(3.0, 4.0), Point(5.0, 6.0)]
 ```
 
-> [!NOTE] When `converter` is given, the parser always **consumes exactly one value**, regardless of the type hint. Thus, `vals: list[int] = option(converter=lambda s: s.split())` will take `--vals 1,2,3 4,5,6` to just `[1, 2, 3]` and leave `"4,5,6"` as a positional value.
+> [!NOTE] When `converter` is given, the parser always **consumes exactly one value**, regardless of the type hint. Thus, `vals: list[int] = option(converter=lambda s: s.split(","))` will take `--vals 1,2,3 4,5,6` to just `[1, 2, 3]` and leave `"4,5,6"` as a positional value.
 
 #### Type Inference
 
@@ -484,6 +514,38 @@ class Args(ArgSpec):
     names: list[str] = option()
 ```
 
+#### Direct Instantiation
+
+In the case where you want to use class as a raw dataclass, perhaps for testing, you can do so, with the same runtime guarantees about type coercion and defaults:
+
+```py
+def seven() -> int:
+    return 7
+
+class Args(ArgSpec):
+    x: int = option()
+    y: int = option(2)
+    z: int = option(default_factory=seven)
+
+
+with suppress(TypeError):
+    # x is required but unprovided, so this is a TypeError
+    Args()
+
+# fallback to defaults
+print(Args(1))    # Args(x=1, y=2, z=7)
+
+# coerce types even if provided...
+print(Args("1"))  # Args(x=1, y=2, z=7)
+
+# ...unless they can't be coerced
+with suppress(ValueError):
+    Args(x="invalid")
+
+# if you really want to disable validation (though defaults will still get applied)
+print(Args(x="1", y="invalid", __ARGSPEC_SKIP_VALIDATION__=True))  # Args(x='1', y='invalid', z=7)
+```
+
 #### Look-Ahead Variadics
 
 When defining variadic (variable-length) arguments, `argspec` will happily look ahead to see how many values it can safely take whilst still leaving enough for the later arguments. For example:
@@ -500,9 +562,34 @@ args = Args.from_argv(["A", "B", "C", "D", "E", "F", "G"])
 print(args)  # Args(head='A', middle=['B', 'C'], penultimate='D', tail='E', and_two_more=('F', 'G'))
 ```
 
-However, this requires that *at most one* positional argument be defines as variadic. If multiple positionals are variadic, this is an ArgumentSpecError.
+However, this requires that *at most one* positional argument be defined as variadic. If multiple positionals are variadic, this is an ArgumentSpecError.
+
+#### Mutable Defaults
+
+`argspec` automatically recognises mutable default values and converts them under the hood to default factories. Thus, the following two field specifications are equivalent.
+
+```py
+class Args(ArgSpec):
+    x: list[int] = option([1, 2, 3])
+    y: list[int] = option(default_factory=lambda: [1, 2, 3])
+
+
+args1 = Args.from_argv(argv=None)
+args2 = Args.from_argv(argv=None)
+
+print(args1.x)  # [1, 2, 3]
+
+args2.x.append(4)
+
+print(args1.x)  # [1, 2, 3]
+print(args2.x)  # [1, 2, 3, 4]
+```
 
 ## Known Limitations
 
 - `argspec` does not provide a mechanism for subcommands or argument groups (such as mutually exclusive arguments)
 - `argspec` does not yet support combined short flags (i.e., `-a -b -c` cannot be shortened to `-abc`)
+- Static analysis support for the generated `__init__` method (used for direct instantiation) is inconsistent across IDEs depending on their implementation of `@dataclass_transform()` ([PEP 681](https://peps.python.org/pep-0681/)).
+  - Pyright seems to generally provide strong support, providing full autocomplete and typing for fields and showing complete signatures (e.g., `(x: int = positional(help="the value of x"), y: int = positional(2, help="the value of y")) -> Args`).
+  - Pylance (VSCode) provides full autocomplete and typing for fields, but it may fall back to generic `class Args()` in tooltips when directly instantiating.
+  - mypy provides a correct analysis of the types on the resulting class and, regarding direct instantiation, will catch both invalid types (`Args(x='1')` -> arg-type) and invalid parameters (`Args(z=7)` -> call-arg).

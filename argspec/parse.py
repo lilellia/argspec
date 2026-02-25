@@ -1,14 +1,17 @@
 from collections import deque
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from io import StringIO
 import itertools
 from pathlib import Path
 import sys
-from typing import Any, cast, get_args, get_origin, NamedTuple, TypeVar
+from typing import Any, cast, get_args, get_origin, NamedTuple, TYPE_CHECKING, TypeVar
 
 from typewire import as_string, as_type, is_iterable, TypeHint
 from typing_extensions import get_annotations
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -26,6 +29,7 @@ class ArgvConsumeResult(NamedTuple):
 
 
 C = TypeVar("C")
+T = TypeVar("T")
 
 
 def get_container_length(type_hint: TypeHint) -> int | None:
@@ -69,7 +73,7 @@ def kebabify(text: str, *, lower: bool = False) -> str:
     return kebab.lower() if lower else kebab
 
 
-def format_help_message_for_positional(name: str, type_: TypeHint, meta: Positional[Any]) -> str:
+def format_help_message_for_positional(name: str, type_: TypeHint, meta: Positional[Any, Any]) -> str:
     match get_container_length(type_):
         case 0:
             value = name.upper()
@@ -83,7 +87,7 @@ def format_help_message_for_positional(name: str, type_: TypeHint, meta: Positio
 
 @dataclass(frozen=True, slots=True)
 class Schema:
-    args: dict[str, tuple[TypeHint, Positional[Any] | Option[Any] | Flag]]
+    args: dict[str, tuple[TypeHint, Positional[Any, Any] | Option[Any, Any] | Flag]]
     aliases: dict[str, str]
     flag_negators: dict[str, str]
 
@@ -93,11 +97,11 @@ class Schema:
             raise ArgumentSpecError("Multiple positional arguments with arbitrary length")
 
     @property
-    def positional_args(self) -> dict[str, tuple[TypeHint, Positional[Any]]]:
+    def positional_args(self) -> dict[str, tuple[TypeHint, Positional[Any, Any]]]:
         return {name: (type_, meta) for name, (type_, meta) in self.args.items() if isinstance(meta, Positional)}
 
     @property
-    def option_args(self) -> dict[str, tuple[TypeHint, Option[Any]]]:
+    def option_args(self) -> dict[str, tuple[TypeHint, Option[Any, Any]]]:
         return {name: (type_, meta) for name, (type_, meta) in self.args.items() if isinstance(meta, Option)}
 
     @property
@@ -137,20 +141,23 @@ class Schema:
         return get_container_length(type_)
 
     @classmethod
-    def for_class(cls, wrapped_cls: type[C]) -> Self:
-        args: dict[str, tuple[TypeHint, Positional[Any] | Option[Any] | Flag]] = {}
+    def for_class(cls, wrapped_cls: DataclassInstance) -> Self:
+        args: dict[str, tuple[TypeHint, Positional[Any, Any] | Option[Any, Any] | Flag]] = {}
         aliases: dict[str, str] = {}
         flag_negators: dict[str, str] = {}
-        for name, annot in get_annotations(wrapped_cls, eval_str=True).items():
-            # get the value of the attribute; will be MISSING if
-            # 1) the value was never set, e.g., `x: int`
-            # 2) the value was set to dataclasses.field, e.g., `y: list[int] = field(default_factory=list)`,
-            #    since dataclasses will generally remove these from the class dict
-            value = getattr(wrapped_cls, name, MISSING)
 
-            if not isinstance(value, (Positional, Option, Flag)):
-                # value is not an argspec object, so we'll just ignore it, letting the dataclass handle it
+        field_map = {f.name: f for f in fields(wrapped_cls)}
+
+        for name, annot in get_annotations(wrapped_cls, eval_str=True).items():
+            f = field_map.get(name)
+
+            assert f is not None
+
+            if not f.metadata or "argspec" not in f.metadata:
+                # this isn't an argspec field, so we'll just ignore it
                 continue
+
+            value: Positional[Any, Any] | Option[Any, Any] | Flag = f.metadata["argspec"]
 
             args[name] = (annot, value)
             kebab_name = kebabify(name, lower=True)
@@ -193,7 +200,7 @@ class Schema:
 
         return cls(args=args, aliases=aliases, flag_negators=flag_negators)
 
-    def get_all_names_for(self, name: str, meta: Option[Any] | Flag) -> list[str]:
+    def get_all_names_for(self, name: str, meta: Option[Any, Any] | Flag) -> list[str]:
         names = [kebabify(name if name.startswith("-") else f"--{name}", lower=True)]
 
         if meta.aliases:
@@ -226,7 +233,7 @@ class Schema:
 
         # flags
 
-        meta: Flag | Option[Any] | Positional[Any]
+        meta: Flag | Option[Any, Any] | Positional[Any, Any]
 
         for name, (type_, meta) in self.flag_args.items():
             names = ", ".join(self.get_all_names_for(name, meta))
@@ -496,3 +503,22 @@ class Schema:
             raise
 
         return parsed_args
+
+    def validate(self, instance: C) -> C:
+        kwargs = {k: v for k, v in instance.__dict__.items() if k in self.args}
+
+        try:
+            # recoerce types
+            for name, (type_, _) in self.args.items():
+                try:
+                    kwargs[name] = as_type(kwargs[name], type_)
+                except ValueError:
+                    raise ValueError(f"Invalid value for {name}: {kwargs[name]} (incorrect type)")
+
+            self.apply_defaults(kwargs)
+            self.run_validators(kwargs)
+        except ArgumentError:
+            raise
+
+        kwargs["__ARGSPEC_SKIP_VALIDATION__"] = True
+        return type(instance)(**kwargs)
