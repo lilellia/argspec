@@ -97,3 +97,20 @@ def test_help_message_for_readenv_when_set_but_no_default() -> None:
     help_text = Config.__argspec_schema__.help()
     expected = "(default: $SERVICE_API_KEY (currently: 'environment value for service api key'))"
     assert expected in help_text
+
+
+def test_readenv_secret() -> None:
+    class Config(ArgSpec):
+        api_key: str = option(default_factory=readenv("SERVICE_API_KEY", secret=True), help="API key for the service")
+
+    value = "environment value for service api key"
+    os.environ["SERVICE_API_KEY"] = value
+
+    help_text = Config.__argspec_schema__.help()
+    expected = "(default: $SERVICE_API_KEY (currently: ******))"
+
+    assert value not in help_text
+    assert expected in help_text
+
+    config = Config.from_argv([])
+    assert config.api_key == value

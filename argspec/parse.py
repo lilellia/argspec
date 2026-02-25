@@ -254,6 +254,8 @@ class Schema:
                     current = factory()
                     if current is MISSING:
                         current = "<unset>"
+                    elif factory.secret:
+                        current = "******"
                     else:
                         current = repr(current)
 

@@ -365,7 +365,7 @@ Notes:
 
 ### `readenv`
 
-This function can be used as a default factory to provide a fallback to a given environment variable if the value is not provided on the command line. It reads the environment variable at instantiation time (i.e., when `.from_argv()` is called), rather than definition time. In particular, the signature is `def readenv(key: str, default: Any = MISSING) -> Callable[[], Any]` and thus can be used, as in the example at the top of the page, as:
+This function can be used as a default factory to provide a fallback to a given environment variable if the value is not provided on the command line. It reads the environment variable at instantiation time (i.e., when `.from_argv()` is called), rather than definition time. In particular, the signature is `def readenv(key: str, default: Any = MISSING, *, secret: bool = False) -> Callable[[], Any]` and thus can be used, as in the example at the top of the page, as:
 
 ```py
 from argspec import ArgSpec, option, readenv
@@ -391,6 +391,8 @@ Options:
     --api-key API_KEY <str>
     the API key to use from the service (default: $SERVICE_API_KEY (currently: 'token=demo-api-token'))
 ```
+
+If `secret=True`, then the help message will *not* show the current value but will instead show `currently: ******`.
 
 ### General Notes
 
