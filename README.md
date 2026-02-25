@@ -48,7 +48,7 @@ Options:
     the max number of tries to try doing the thing (default: 10)
 
     --metadata <dict[str, str]>
-    metadata for the messages, given as a JSON string
+    metadata for the messages, given as a JSON string (default: {})
 
 
 Arguments:
