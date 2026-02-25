@@ -12,6 +12,8 @@ from typing_extensions import get_annotations
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
+else:
+    DataclassInstance = Any
 
 if sys.version_info >= (3, 11):
     from typing import Self
