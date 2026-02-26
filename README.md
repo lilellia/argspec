@@ -623,7 +623,8 @@ with suppress(ValueError):
     Args(x="invalid")
 ```
 
-> [!WARNING] **Advanced Use Only:** It is possible to bypass the validator and type coercion step, though doing so
+> [!WARNING]
+> **Advanced Use Only:** It is possible to bypass the validator and type coercion step, though doing so
 > is obviously not recommended, as all guarantees about the shape of the class can no longer be made.
 > All the same, if you need to do so, pass `__ARGSPEC_SKIP_VALIDATION__=True` into the constructor:
 > `Args(x="invalid", __ARGSPEC_SKIP_VALIDATION__=True)` -> `Args(x='invalid')`
@@ -655,7 +656,8 @@ ValueError: Invalid value for y: 'str' (invalid literal for int() with base 10: 
 ArgumentError: Invalid value for y: -123
 ```
 
-> [!WARNING] **Advanced Use Only:** `.replace` also supports `__ARGSPEC_SKIP_VALIDATION__=True` as a flag, so, in
+> [!WARNING]
+> **Advanced Use Only:** `.replace` also supports `__ARGSPEC_SKIP_VALIDATION__=True` as a flag, so, in
 > the rare situation where > the dangers of blindly replacing values is necessary:
 > `args.replace(y="-123", __ARGSPEC_SKIP_VALIDATION__=True)` -> `Args(x=1, y='-123')`.
 >

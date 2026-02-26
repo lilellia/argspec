@@ -41,15 +41,20 @@ class ArgSpecMeta(type):
             # inst will be the "normal" instance that's a result of
             # inst = Args.__init__(self, *args, **kwargs)
 
+            kwargs.pop("__ARGSPEC_VALIDATED__", None)
             inst = super().__call__(*args, **kwargs)
 
             if __ARGSPEC_SKIP_VALIDATION__:
+                object.__setattr__(inst, "__ARGSPEC_VALIDATED__", False)
                 return inst
 
             # we intercept that instance and validate it with the schema
             # which means injecting default values, reapplying validators, etc.
             schema = cls.__argspec_schema__
-            return schema.validate(inst)
+            inst = schema.validate(inst)
+
+            object.__setattr__(inst, "__ARGSPEC_VALIDATED__", True)
+            return inst
 
 
 @dataclass_transform()
@@ -106,13 +111,13 @@ class ArgSpec(metaclass=ArgSpecMeta):
         """
 
         if kwargs.pop("__ARGSPEC_SKIP_VALIDATION__", False):
-            kw = {**self.__dict__, **kwargs}
+            kw = {**self.__dict__, **kwargs, "__ARGSPEC_VALIDATED__": False}
             try:
                 return type(self)(**kw, __ARGSPEC_SKIP_VALIDATION__=True)  #  type: ignore[call-arg]
             except ArgumentError as err:
                 raise ValueError(str(err)) from err
 
         try:
-            return dataclasses.replace(self, **kwargs)  # type: ignore[type-var]
+            return dataclasses.replace(self, **kwargs, __ARGSPEC_VALIDATED__=self.__ARGSPEC_VALIDATED__)  # type: ignore[type-var, attr-defined]
         except ArgumentError as err:
             raise ValueError(str(err)) from err

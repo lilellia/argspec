@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.6.3
+
+- Add `__ARGSPEC_VALIDATED__` as as runtime field on `ArgSpec` objects, staining objects which were created with `__ARGSPEC_SKIP_VALIDATION__`.
+
 ## 0.6.2
 
 - Add `.replace(**kwargs)` to ArgSpec instances.
