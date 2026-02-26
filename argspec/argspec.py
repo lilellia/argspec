@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+import dataclasses
 from dataclasses import dataclass
 import sys
 from typing import Any, cast, TYPE_CHECKING
@@ -72,3 +73,46 @@ class ArgSpec(metaclass=ArgSpecMeta):
             sys.stderr.write(f"ArgumentError: {err}\n")
             sys.stderr.write(cls.__help() + "\n")
             sys.exit(1)
+
+    def replace(self, **kwargs: Any) -> Self:
+        """Return a new instance with the given changes applied, re-applying type coercion and validators.
+           Raises TypeError if any of the keys is unrecognised; ValueError if any of the values are invalid.
+           If kwargs contains __ARGSPEC_SKIP_VALIDATION__ = True, validation will be skipped, which is dangerous.
+
+        class Args(ArgSpec):
+            x: int = positional()
+            y: int = positional(validator=lambda y: y > 0)
+
+        >>> args = Args(x="1", y="2")  # str -> int is coercible
+        >>> args
+        Args(x=1, y=2)
+
+        >>> args.replace(x="-1")
+        Args(x=-1, y=2)
+
+        >>> args.replace(y="str")  # this string can't be coerced to int
+        ValueError: Invalid value for y: 'str' (invalid literal for int() with base 10: 'str')
+
+        >>> args.replace(y="-123")
+        ArgumentError: Invalid value for y: -123
+
+        # __ARGSPEC_SKIP_VALIDATION__ will skip validation, though obviously, this is dangerous
+        >>> args.replace(y="-123", __ARGSPEC_SKIP_VALIDATION__=True)
+        Args(x=1, y=-123)
+
+        >>> args.replace(z=1)
+        TypeError: Args.__init__() got an unexpected keyword argument 'z'
+
+        """
+
+        if kwargs.pop("__ARGSPEC_SKIP_VALIDATION__", False):
+            kw = {**self.__dict__, **kwargs}
+            try:
+                return type(self)(**kw, __ARGSPEC_SKIP_VALIDATION__=True)  #  type: ignore[call-arg]
+            except ArgumentError as err:
+                raise ValueError(str(err)) from err
+
+        try:
+            return dataclasses.replace(self, **kwargs)  # type: ignore[type-var]
+        except ArgumentError as err:
+            raise ValueError(str(err)) from err

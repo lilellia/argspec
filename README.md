@@ -555,38 +555,6 @@ class Args(ArgSpec):
     names: list[str] = option()
 ```
 
-#### Direct Instantiation
-
-In the case where you want to use class as a raw dataclass, perhaps for testing, you can do so, with the same runtime guarantees about type coercion and defaults:
-
-```py
-def seven() -> int:
-    return 7
-
-class Args(ArgSpec):
-    x: int = option()
-    y: int = option(2)
-    z: int = option(default_factory=seven)
-
-
-with suppress(TypeError):
-    # x is required but unprovided, so this is a TypeError
-    Args()
-
-# fallback to defaults
-print(Args(1))    # Args(x=1, y=2, z=7)
-
-# coerce types even if provided...
-print(Args("1"))  # Args(x=1, y=2, z=7)
-
-# ...unless they can't be coerced
-with suppress(ValueError):
-    Args(x="invalid")
-
-# if you really want to disable validation (though defaults will still get applied)
-print(Args(x="1", y="invalid", __ARGSPEC_SKIP_VALIDATION__=True))  # Args(x='1', y='invalid', z=7)
-```
-
 #### Look-Ahead Variadics
 
 When defining variadic (variable-length) arguments, `argspec` will happily look ahead to see how many values it can safely take whilst still leaving enough for the later arguments. For example:
@@ -625,6 +593,73 @@ args2.x.append(4)
 print(args1.x)  # [1, 2, 3]
 print(args2.x)  # [1, 2, 3, 4]
 ```
+
+#### Direct Instantiation
+
+In the case where you want to use class as a raw dataclass, perhaps for testing, you can do so. This method of instantiation preserves the contract regarding types and validators since the type coercers (based on the type hints) and validators (from the field `validator=` attributes and `__post_init__`) are automatically run:
+
+```py
+def seven() -> int:
+    return 7
+
+class Args(ArgSpec):
+    x: int = option()
+    y: int = option(2)
+    z: int = option(default_factory=seven)
+
+
+with suppress(TypeError):
+    # x is required but unprovided, so this is a TypeError
+    Args()
+
+# fallback to defaults
+print(Args(1))    # Args(x=1, y=2, z=7)
+
+# coerce types even if provided...
+print(Args("1"))  # Args(x=1, y=2, z=7)
+
+# ...unless they can't be coerced
+with suppress(ValueError):
+    Args(x="invalid")
+```
+
+> [!WARNING] **Advanced Use Only:** It is possible to bypass the validator and type coercion step, though doing so
+> is obviously not recommended, as all guarantees about the shape of the class can no longer be made.
+> All the same, if you need to do so, pass `__ARGSPEC_SKIP_VALIDATION__=True` into the constructor:
+> `Args(x="invalid", __ARGSPEC_SKIP_VALIDATION__=True)` -> `Args(x='invalid')`
+>
+> In addition, `mypy` will flag use of this flag via "call-arg" as the flag isn't documented on the `__init__` method.
+
+#### Replacement as Mutability
+
+`ArgSpec` class objects support `args = args.replace(**changes)`, which is a thin wrapper over `dataclasses.replace(args, **changes)`.
+
+Note that the type coercion and field validators still apply:
+
+```py
+class Args(ArgSpec):
+    x: int = positional()
+    y: int = positional(validator=lambda y: y > 0)
+
+>>> args = Args(x="1", y="2")  # str -> int is coercible
+>>> args
+Args(x=1, y=2)
+
+>>> args.replace(x="-1")  # again, str -> int is coerced
+Args(x=-1, y=2)
+
+>>> args.replace(y="str")  # this string can't be coerced to int
+ValueError: Invalid value for y: 'str' (invalid literal for int() with base 10: 'str')
+
+>>> args.replace(y="-123")
+ArgumentError: Invalid value for y: -123
+```
+
+> [!WARNING] **Advanced Use Only:** `.replace` also supports `__ARGSPEC_SKIP_VALIDATION__=True` as a flag, so, in
+> the rare situation where > the dangers of blindly replacing values is necessary:
+> `args.replace(y="-123", __ARGSPEC_SKIP_VALIDATION__=True)` -> `Args(x=1, y='-123')`.
+>
+> Since the signature of `replace` is `self.replace(**kwargs)`, mypy cannot flag the use of this flag with this method.
 
 ## Known Limitations
 

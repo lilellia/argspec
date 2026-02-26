@@ -514,8 +514,8 @@ class Schema:
             for name, (type_, _) in self.args.items():
                 try:
                     kwargs[name] = as_type(kwargs[name], type_)
-                except ValueError:
-                    raise ValueError(f"Invalid value for {name}: {kwargs[name]} (incorrect type)")
+                except ValueError as err:
+                    raise ValueError(f"Invalid value for {name}: {kwargs[name]!r} ({err})")
 
             self.apply_defaults(kwargs)
             self.run_validators(kwargs)

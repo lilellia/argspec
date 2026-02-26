@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.6.2
+
+- Add `.replace(**kwargs)` to ArgSpec instances.
+
 ## 0.6.1
 
 - Add `frozen: bool = True` key to metaclass, making resulting dataclasses immutable by default.
