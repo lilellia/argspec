@@ -15,25 +15,35 @@ from .parse import Schema
 
 
 class ArgSpecMeta(type):
-    __argspec_schema__: Schema
+    _processing = False
 
     def __new__(
         mcs,
         name: str,
         bases: tuple[type, ...],
         namespace: dict[str, Any],
+        slots: bool = True,
         frozen: bool = True,
         **kwargs: Any,
     ) -> type:
-        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+        if mcs._processing or name == "ArgSpec":
+            return super().__new__(mcs, name, bases, namespace, **kwargs)
 
-        if name == "ArgSpec":
-            return cls
+        mcs._processing = True
 
-        cls = cast(Any, dataclass(cls, frozen=frozen))
-        cls.__argspec_schema__ = Schema.for_class(cls)
+        try:
+            raw = type(name, bases, namespace)
+            cls = cast(Any, dataclass(slots=slots, frozen=frozen)(raw))
 
-        return cast(type, cls)
+            cls.__argspec_schema__ = Schema.for_class(cls)
+            cls.__class__ = mcs
+
+            if not slots:
+                cls.__slots__ = ()
+
+            return cast(type, cls)
+        finally:
+            mcs._processing = False
 
     if not TYPE_CHECKING:
 
@@ -59,6 +69,9 @@ class ArgSpecMeta(type):
 
 @dataclass_transform()
 class ArgSpec(metaclass=ArgSpecMeta):
+    __argspec_schema__: Schema
+    __slots__ = ("__ARGSPEC_VALIDATED__",)
+
     @classmethod
     def __help(cls) -> str:
         return cls.__argspec_schema__.help()
@@ -111,7 +124,11 @@ class ArgSpec(metaclass=ArgSpecMeta):
         """
 
         if kwargs.pop("__ARGSPEC_SKIP_VALIDATION__", False):
-            kw = {**self.__dict__, **kwargs, "__ARGSPEC_VALIDATED__": False}
+            kw = {
+                **dataclasses.asdict(self),  # type: ignore[call-overload]
+                **kwargs,
+                "__ARGSPEC_VALIDATED__": False,
+            }
             try:
                 return type(self)(**kw, __ARGSPEC_SKIP_VALIDATION__=True)  #  type: ignore[call-arg]
             except ArgumentError as err:

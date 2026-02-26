@@ -507,15 +507,16 @@ class Schema:
         return parsed_args
 
     def validate(self, instance: C) -> C:
-        kwargs = {k: v for k, v in instance.__dict__.items() if k in self.args}
+        kwargs: dict[str, Any] = {}
 
         try:
             # recoerce types
             for name, (type_, _) in self.args.items():
+                value = getattr(instance, name)
                 try:
-                    kwargs[name] = as_type(kwargs[name], type_)
+                    kwargs[name] = as_type(value, type_)
                 except ValueError as err:
-                    raise ValueError(f"Invalid value for {name}: {kwargs[name]!r} ({err})")
+                    raise ValueError(f"Invalid value for {name}: {value!r} ({err})")
 
             self.apply_defaults(kwargs)
             self.run_validators(kwargs)

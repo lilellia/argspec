@@ -2,6 +2,7 @@
 
 ## 0.6.3
 
+- Add `slots: bool = True` key to metaclass, making resulting dataclasses slot-based by default.
 - Add `__ARGSPEC_VALIDATED__` as as runtime field on `ArgSpec` objects, staining objects which were created with `__ARGSPEC_SKIP_VALIDATION__`.
 
 ## 0.6.2

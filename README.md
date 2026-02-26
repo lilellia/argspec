@@ -440,6 +440,18 @@ args = Args.from_argv(["100", "1"])
 print(args)  # Args(min_value=1, max_value=100)
 ```
 
+> [!INFO]
+> Similarly, `ArgSpec` classes are slotted by default (via `dataclasses(..., slots=True)`). If you want an instance dictionary instead, just pass `slots=False` when defining the subclass.
+>
+> ```py
+> class Args(ArgSpec, slots=False)
+>     x: int = positional()
+> 
+> args = Args(x=1)
+> print(args.__slots__)  # ()
+> print(args.__dict__)   # {'x': 1}
+> ```
+
 #### `--key value` vs. `--key=value`
 
 `argspec` allows for both formats for options. Flags, however, cannot take values even in the latter form. Thus, `--path /path/to/file` and `--path=/path/to/file` are both acceptable, but `--verbose=false` is not (use simply `--verbose` as an enable flag and `--no-verbose` as a disable flag).
@@ -534,7 +546,8 @@ assert args.vals == [1, 2, 3]
 assert args.points == [Point(1.0, 2.0), Point(3.0, 4.0), Point(5.0, 6.0)]
 ```
 
-> [!NOTE] When `converter` is given, the parser always **consumes exactly one value**, regardless of the type hint. Thus, `vals: list[int] = option(converter=lambda s: s.split(","))` will take `--vals 1,2,3 4,5,6` to just `[1, 2, 3]` and leave `"4,5,6"` as a positional value.
+> [!NOTE]
+> When `converter` is given, the parser always **consumes exactly one value**, regardless of the type hint. Thus, `vals: list[int] = option(converter=lambda s: s.split(","))` will take `--vals 1,2,3 4,5,6` to just `[1, 2, 3]` and leave `"4,5,6"` as a positional value.
 
 #### Type Inference
 
