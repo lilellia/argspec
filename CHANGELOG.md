@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.6.1
+
+- Add `frozen: bool = True` key to metaclass, making resulting dataclasses immutable by default.
+
 ## 0.6.0
 
 - Change `positional` (resp. `option`, `flag`) from returning bespoke `Positional` (resp. `Option`, `Flag`) objects to returning `dataclasses.field(..., metadata={"argspec": metadata_object})`.

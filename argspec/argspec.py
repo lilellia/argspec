@@ -16,13 +16,20 @@ from .parse import Schema
 class ArgSpecMeta(type):
     __argspec_schema__: Schema
 
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any], **kwargs: Any) -> type:
+    def __new__(
+        mcs,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        frozen: bool = True,
+        **kwargs: Any,
+    ) -> type:
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
 
         if name == "ArgSpec":
             return cls
 
-        cls = cast(Any, dataclass(cls))
+        cls = cast(Any, dataclass(cls, frozen=frozen))
         cls.__argspec_schema__ = Schema.for_class(cls)
 
         return cast(type, cls)

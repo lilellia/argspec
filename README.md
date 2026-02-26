@@ -399,6 +399,47 @@ If `secret=True`, then the help message will *not* show the current value but wi
 
 ### General Notes
 
+### Mutability
+
+By default, `ArgSpec` classes are immutable (via `dataclass(..., frozen=True)`). If you need to have a mutable class, just pass `frozen=False` as part of the subclass definition:
+
+```py
+class ImmutableArgs(ArgSpec):
+    x: int = positional()
+
+class MutableArgs(ArgSpec, frozen=False):
+    x: int = positional()
+
+immutable = ImmutableArgs(x=1)
+mutable = MutableArgs(x=1)
+
+with suppress(dataclasses.FrozenInstanceError):
+    immutable.x = 2
+
+# but this is totally fine
+mutable.x = 2
+```
+
+The dataclass being frozen aims to prevent accidental mutation to the class, as most of the time, argv is semantically read-only. This also has the side benefit that the dataclass is hashable by default, meaning that it can be put in set/dict.
+
+The primary purpose for `frozen=False` would be a `__post_init__` that needs to "heal" a broken class:
+
+```py
+class Args(ArgSpec, frozen=False):
+    min_value: int = positional()
+    max_value: int = positional()
+
+    def __post_init__(self):
+        if self.min_value > self.max_value:
+            sys.stderr.write(f"(min, max) = ({self.min_value}, {self.max_value}) being interpreted as ({self.max_value}, {self.min_value}) instead\n")
+            
+            # this swap only works because the instance isn't frozen
+            self.min_value, self.max_value = self.max_value, self.min_value
+
+args = Args.from_argv(["100", "1"])
+print(args)  # Args(min_value=1, max_value=100)
+```
+
 #### `--key value` vs. `--key=value`
 
 `argspec` allows for both formats for options. Flags, however, cannot take values even in the latter form. Thus, `--path /path/to/file` and `--path=/path/to/file` are both acceptable, but `--verbose=false` is not (use simply `--verbose` as an enable flag and `--no-verbose` as a disable flag).
@@ -443,7 +484,7 @@ class Args(ArgSpec):
 
     def __post_init__(self):
         if self.min_value > self.max_value:
-            # The dataclass isn't frozen, so you could also decide to just switch the values in this case.
+            # If you set the class as nonfrozen, so you could also decide to just switch the values in this case (see above).
             raise ArgumentError(f"{self.min_value=} cannot be greater than {self.max_value!r}")
 
 args = Args.from_argv(["10", "100"])

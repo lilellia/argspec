@@ -7,6 +7,13 @@ import pytest
 from argspec import ArgSpec, ArgumentError, ArgumentSpecError, flag, option, positional
 
 
+def test_class_is_a_dataclass() -> None:
+    class Config(ArgSpec):
+        pass
+
+    assert dataclasses.is_dataclass(Config)
+
+
 def test_basic_usage() -> None:
     class Config(ArgSpec):
         path: Path = positional()
